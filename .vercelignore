@@ -1,0 +1,13 @@
+.env*
+.host-credentials.txt
+.bootstrap.json
+.vercel-data
+.vercel-local
+.vercel-config
+.npm-cache
+.release-tools
+release
+tests
+supabase
+*.zip
+README.md
