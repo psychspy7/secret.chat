@@ -2,3 +2,31 @@
 .cta-stack{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:22px}.cta-stack .button,.cta-stack .ghost{width:100%;margin:0}.limit-note{font-size:11px!important;line-height:1.5;margin:16px 0 0;color:#82979c!important}.support{max-width:1120px;margin:0 auto 80px;padding:48px 5vw;border-top:1px solid var(--line);display:grid;grid-template-columns:.7fr 1.3fr;gap:45px}.support h2{font-size:34px;margin:14px 0 10px}.support-copy p{color:var(--muted)}.wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.wallet-grid article{min-width:0;padding:22px;border:1px solid var(--line);border-radius:10px;background:var(--card)}.wallet-grid article>div{display:flex;justify-content:space-between;gap:12px;align-items:center}.wallet-grid b{font-size:15px}.wallet-grid span{font-size:9px;letter-spacing:1.2px;color:var(--mint)}.wallet-grid code{display:block;margin:20px 0;color:#a9bec2;font:11px/1.5 Consolas,monospace;overflow-wrap:anywhere}.wallet-grid button{width:100%}.create-card{max-width:560px!important}.creation-limits{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:25px;padding-top:22px;border-top:1px solid var(--line)}.creation-limits b{grid-column:1/-1;color:var(--mint);font-size:11px;letter-spacing:1px}.creation-limits span{font-size:11px;color:var(--muted);padding-left:14px;position:relative}.creation-limits span:before{content:'·';position:absolute;left:2px;color:var(--mint)}@media(max-width:850px){.support{grid-template-columns:1fr}.wallet-grid{grid-template-columns:1fr 1fr}}@media(max-width:620px){.cta-stack,.wallet-grid,.creation-limits{grid-template-columns:1fr}.support{margin-bottom:30px;padding:40px 6vw}.support h2{font-size:28px}.creation-limits b{grid-column:auto}.wallet-grid article{padding:18px}}
 
 .managed{display:flex;align-items:center;gap:8px;letter-spacing:.8px;color:var(--text)}.managed a{display:inline-flex;align-items:center;padding:7px 10px;border:1px solid #79cba8;border-radius:999px;background:#1d3932;color:#d6ffe9;font-weight:800;text-transform:uppercase;box-shadow:0 0 20px #79cba822}.managed a:hover{background:#2b5648}.room-card h3,.chat-head h2{overflow-wrap:anywhere}input[readonly]{cursor:text}
+
+.public-notices{max-width:1120px;margin:0 auto 70px;padding:0 5vw}
+.public-notices[hidden]{display:none}
+.public-notices h2{margin:10px 0 22px}
+.notice-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.notice-grid article{min-width:0;padding:24px}
+.notice-grid small{color:var(--mint);font-size:10px;letter-spacing:1px}
+.notice-grid h3{margin:12px 0}
+.notice-grid p,.admin-list-item p{color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.notice-grid a{color:var(--mint);font-weight:700;font-size:12px}
+.admin-panels{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:0 0 50px}
+.admin-card{min-width:0;box-shadow:none}
+.admin-card>p,.muted-small{color:var(--muted);font-size:12px}
+.admin-list-item{border-top:1px solid var(--line);padding:16px 0;display:flex;justify-content:space-between;gap:16px}
+.admin-list-item b{display:block;overflow-wrap:anywhere}
+.admin-list-item small{display:block;color:var(--muted);font-size:10px;margin-top:5px}
+.admin-list-item p{font-size:12px;margin:9px 0 0}
+.admin-row-actions{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+.admin-row-actions .small{padding:8px 10px}
+.admin-notice-list{margin-top:25px}
+.small.danger{color:var(--danger);border-color:#704348;background:transparent}
+.chat-head-actions{display:flex;align-items:center;gap:12px}
+.sound-toggle{background:transparent;border-color:#3a4d52;color:var(--mint);white-space:nowrap}
+@media(max-width:850px){.admin-panels{grid-template-columns:1fr}.notice-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.public-notices{padding:0 6vw;margin-bottom:40px}.notice-grid{grid-template-columns:1fr}.admin-list-item{display:block}.admin-row-actions{justify-content:flex-start;margin-top:12px}.chat-head-actions{gap:6px}.sound-toggle{padding:7px 9px;font-size:10px}}
+@media(prefers-reduced-motion:no-preference){.hero,.landing .join-card,.public-notices:not([hidden]),.chat-main{animation:sidechat-enter .55s ease-out both}.landing .join-card{animation-delay:.08s}@keyframes sidechat-enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}}
+
+.beta-note{border-left:2px solid var(--mint);padding:10px 12px;background:#b6ead30b;color:#b9cec7!important;font-size:12px}
