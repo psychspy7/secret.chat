@@ -1,6 +1,6 @@
 # SecretChat updates
 
-Current Android release: **1.5.0 / build 5**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
+Current Android release: **1.5.0 / build 6**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
 
 ## Update the website
 
@@ -13,7 +13,7 @@ The browser website and Android app currently use separate room systems. Their i
 ## Update the Android app
 
 1. Keep the same package ID, `com.kittycorp.sidechat`, and **restore the original private `.android-signing` folder**. Never upload it to GitHub or include it in the source ZIP. Keep an encrypted private backup. Changing the signing key prevents updates to existing installations.
-2. Increase `versionCode` beyond **5** and set the new `versionName` in `mobile/android/app/build.gradle`. Align `mobile/package.json`, its lockfile, and the browser-preview version in `mobile/src/main.js`.
+2. Increase `versionCode` beyond **6** and set the new `versionName` in `mobile/android/app/build.gradle`. Align `mobile/package.json`, its lockfile, and the browser-preview version in `mobile/src/main.js`.
 3. Restore your public client settings in root `.env.local` and download `mobile/android/app/google-services.json` from the Firebase project. These files are excluded from the clean source ZIP. Never use a Supabase service-role key in the app.
 4. Run these commands from the repository root in PowerShell:
 

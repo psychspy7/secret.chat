@@ -7,7 +7,7 @@ import { randomAccessCode, normalizeAccessCode, isAccessCode, formatAccessCode, 
 import { notificationStatus, loadNotificationSettings, enableNotifications, disableNotifications, clearNotificationSession, announcePresence, chirp } from './notifications.js';
 
 const app = document.querySelector('#app');
-const state = { booting: true, session: null, profile: null, rooms: [], localRooms: {}, notices: [], screen: 'home', room: null, messages: [], online: [], connected: false, appActive: true, offline: !navigator.onLine, busy: '', modal: null, error: '', authError: '', admin: null, draft: '', version: { version: '1.5.0', versionCode: 5 }, biometric: { enabled: false, available: false }, update: null, updateStatus: '', launch: true, backendReady: false };
+const state = { booting: true, session: null, profile: null, rooms: [], localRooms: {}, notices: [], screen: 'home', room: null, messages: [], online: [], connected: false, appActive: true, offline: !navigator.onLine, busy: '', modal: null, error: '', authError: '', admin: null, draft: '', version: { version: '1.5.0', versionCode: 6 }, biometric: { enabled: false, available: false }, update: null, updateStatus: '', launch: true, backendReady: false };
 let accountGeneration = 0, authUserId = null, authLoading = false, heartbeatTimer, toastTimer, sending = false, heartbeatInFlight = false;
 const subscriptions = new Map();
 const keyCache = new Map();

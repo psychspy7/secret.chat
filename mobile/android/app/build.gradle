@@ -17,7 +17,7 @@ android {
         applicationId "com.kittycorp.sidechat"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
+        versionCode 6
         versionName "1.5.0"
         buildConfigField 'String', 'SUPABASE_URL', '"' + clientUrl.replace('"', '').replace('\\', '') + '"'
         buildConfigField 'String', 'SUPABASE_PUBLISHABLE_KEY', '"' + clientKey.replace('"', '').replace('\\', '') + '"'

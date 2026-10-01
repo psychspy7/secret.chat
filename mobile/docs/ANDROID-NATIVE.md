@@ -1,6 +1,6 @@
 # Android build and release
 
-The app identifier is `com.kittycorp.sidechat`. The current release is version `1.5.0`, code `5`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK.
+The app identifier is `com.kittycorp.sidechat`. The current release is version `1.5.0`, code `6`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK.
 
 From the repository root in PowerShell:
 
@@ -22,7 +22,7 @@ Cloud backups and device-transfer backups are disabled. App updates preserve loc
 
 The Activity uses Android `FLAG_SECURE` for system screenshot, recording, and recent-task-preview protection. The sole exception is an unlocked foreground session whose administrator role is confirmed by the native layer against the fixed Supabase profile endpoint. JavaScript cannot supply the admin flag or endpoint. The permission expires within five minutes and is rechecked; logout, a locked app, invalid/revoked session, backgrounding, or an unsuccessful recheck restores protection. Recent-task previews remain protected for the administrator too.
 
-Fingerprint/strong biometric lock is optional in Account settings. Enabling and disabling require device authentication. The native cover locks on backgrounding and survives a cancelled prompt. Device PIN/password is available for recovery. Native vault reads are denied while locked; sign-in callbacks wait for unlock. A camera pointed at a screen or a compromised phone cannot be prevented by the app. Release WebView debugging and cleartext network access are disabled.
+Fingerprint/strong biometric lock is optional in Account settings. Enabling and disabling require device authentication. The native cover locks on backgrounding and survives a cancelled prompt. Device PIN/password is available for recovery. Native vault reads are denied while locked; the chat view is invisible and excluded from touch/accessibility navigation; sign-in callbacks wait for unlock. A camera pointed at a screen or a compromised phone cannot be prevented by the app. Release WebView debugging and cleartext network access are disabled.
 
 ## Sign-in and notifications
 

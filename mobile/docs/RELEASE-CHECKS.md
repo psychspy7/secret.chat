@@ -1,11 +1,11 @@
-# SecretChat 1.5.0 beta — build 5 — 1 October 2026
+# SecretChat 1.5.0 beta — build 6 — 1 October 2026
 
 Package: `com.kittycorp.sidechat`. Visible name: **SecretChat**. Android 7.0+ (API 24), target API 36, JDK 21. The original release signing certificate is retained.
 
 ## Changes
 
 - Supplied icon and notification MP3, including adaptive launcher icons and a new Android sound channel.
-- Optional fingerprint/strong biometric lock, device PIN/password recovery, and sign-in callbacks that wait for unlock.
+- Optional fingerprint/strong biometric lock, device PIN/password recovery, disabled underlying touch/accessibility controls while locked, and sign-in callbacks that wait for unlock.
 - Confirmed email one-time-link sign-in alongside Google.
 - Screenshot exception only after native, server-verified administrator authorization; lock and recent-task previews remain protected.
 - Creator-selected 1–24 hour rooms; admin groups without expiry; creator extension requests; administrator approval/decline and direct extension.
@@ -23,9 +23,9 @@ Package: `com.kittycorp.sidechat`. Visible name: **SecretChat**. Android 7.0+ (A
 - Supabase advisory review found no new v1.5 privilege exposure. Mobile tables intentionally deny direct access under RLS and use authorized RPCs. Inherited website/other-project warnings remain; this is not an independent security audit.
 - The source packager scans its explicit allowlist and completed archive contents against private key patterns and known local secrets.
 
-APK SHA-256: `3003c4169c1fd1fe14581e35c996b6396d39e167ae87ed4407ffe791b06637c7`.
+APK SHA-256: `b32be6a4ac9555a1fe23943a90507a6e9d4583f9522e018162240268ca9de53b`.
 
-AAB SHA-256: `6842cd294ef1d6781597cb1223d5f7c3f1d7e1f3b8ffd03de74ff603124661fd`.
+AAB SHA-256: `78db93c3d326ca6fa01a29c682a6e87e50c9b1fa43aed185ea4e64c31ea68d00`.
 
 ## Remaining validation and setup
 

@@ -44,6 +44,8 @@ final class SecretChatSecurity {
         cover = new LinearLayout(activity);
         cover.setOrientation(LinearLayout.VERTICAL);
         cover.setGravity(Gravity.CENTER);
+        cover.setClickable(true);
+        cover.setFocusableInTouchMode(true);
         cover.setBackgroundColor(Color.rgb(8, 13, 15));
         cover.setPadding(40, 40, 40, 40);
         TextView title = new TextView(activity);
@@ -58,6 +60,7 @@ final class SecretChatSecurity {
         cover.addView(title); cover.addView(detail); cover.addView(unlock); cover.addView(pin);
         activity.addContentView(cover, new android.view.ViewGroup.LayoutParams(-1, -1));
         cover.setVisibility(locked ? View.VISIBLE : View.GONE);
+        showChat(!locked);
         prompt = new BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), new BiometricPrompt.AuthenticationCallback() {
             @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
                 completeAuthentication();
@@ -73,6 +76,14 @@ final class SecretChatSecurity {
     boolean enabled() { return preferences.getBoolean("biometric", false); }
     boolean available() { return BiometricManager.from(activity).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS; }
     boolean isLocked() { return locked; }
+    private void showChat(boolean visible) {
+        if (activity.getBridge() != null) {
+            View chat = activity.getBridge().getWebView();
+            chat.setImportantForAccessibility(visible ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            chat.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
+        }
+        if (!visible) cover.requestFocus();
+    }
     void setEnabled(boolean enabled, Runnable success, Runnable failure) {
         if (enabled && !available()) { failure.run(); return; }
         authenticate(() -> { preferences.edit().putBoolean("biometric", enabled).apply(); success.run(); }, failure);
@@ -87,7 +98,7 @@ final class SecretChatSecurity {
             .setNegativeButtonText("Cancel").build());
     }
     private void completeAuthentication() {
-        authenticating = false; locked = false; cover.setVisibility(View.GONE); applyCapturePolicy();
+        authenticating = false; locked = false; cover.setVisibility(View.GONE); showChat(true); applyCapturePolicy();
         Runnable success = authenticationSuccess; authenticationSuccess = null; authenticationFailure = null;
         if (success != null) success.run();
         activity.notifyUnlocked();
@@ -105,13 +116,13 @@ final class SecretChatSecurity {
         else { authenticating = false; Runnable failure = authenticationFailure; authenticationSuccess = null; authenticationFailure = null; if (failure != null) failure.run(); }
     }
     void onResume() {
-        if (locked) { cover.setVisibility(View.VISIBLE); authenticate(null, null); }
+        if (locked) { cover.setVisibility(View.VISIBLE); showChat(false); authenticate(null, null); }
         applyCapturePolicy();
         if (sessionToken != null) verifySession(sessionToken);
     }
     void onPause() {
         protectCapture();
-        if (enabled()) { locked = true; cover.setVisibility(View.VISIBLE); }
+        if (enabled()) { locked = true; cover.setVisibility(View.VISIBLE); showChat(false); }
     }
     void protectCapture() { activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); }
     private void applyCapturePolicy() {
