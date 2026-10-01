@@ -11,3 +11,12 @@ tests
 supabase
 *.zip
 README.md
+mobile/
+.mobile-secrets/
+.android-signing/
+.android-tools/
+.firebase/
+*.p12
+*.pfx
+*.jks
+*.keystore

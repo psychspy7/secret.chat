@@ -11,7 +11,7 @@ if (-not $destination.StartsWith($releaseDirectory + [IO.Path]::DirectorySeparat
 
 # Git supplies the initial allowlist. These explicit exclusions also protect
 # against a secret or build directory being accidentally tracked in the future.
-$forbiddenPath = '(?i)(^|/)(\.git|\.agents|\.codex|\.mobile-secrets|\.android-signing|\.android-tools|\.firebase|\.vercel[^/]*|\.npm-cache|\.gradle[^/]*|\.release-tools|node_modules|dist|build|release|test-results|playwright-report|capacitor-cordova-android-plugins)(/|$)|^supabase/\.temp/|^mobile/android/app/src/main/assets/|(^|/)(google-services\.json|[^/]*service-account[^/]*\.json|keystore\.properties|local\.properties|\.bootstrap\.json|\.host-credentials\.txt)$|\.(apk|aab|jks|keystore|p12|pfx|pem|key|log|zip|hprof|heapdump)$'
+$forbiddenPath = '(?i)(^|/)(\.git|\.agents|\.codex|\.mobile-secrets|\.android-signing|\.android-tools|\.firebase|\.vercel(?!ignore$)[^/]*|\.npm-cache|\.gradle[^/]*|\.release-tools|node_modules|dist|build|release|test-results|playwright-report|capacitor-cordova-android-plugins)(/|$)|^supabase/\.temp/|^mobile/android/app/src/main/assets/|(^|/)(google-services\.json|[^/]*service-account[^/]*\.json|keystore\.properties|local\.properties|\.bootstrap\.json|\.host-credentials\.txt)$|\.(apk|aab|jks|keystore|p12|pfx|pem|key|log|zip|hprof|heapdump)$'
 $allowedRoots = @('.github/', 'src/', 'public/', 'supabase/', 'tests/', 'mobile/')
 $allowedRootFiles = @('.env.example', '.gitignore', '.vercelignore', 'README.md', 'UPDATES.md', 'firebase.json', 'index.html', 'netlify.toml', 'package-lock.json', 'package.json', 'vercel.json')
 
@@ -36,7 +36,7 @@ $files = @($candidates | Where-Object {
     $rootAllowed -and ($relative -notmatch $forbiddenPath) -and -not $environmentFile
 })
 if ($files.Count -eq 0) { throw 'The source allowlist is empty.' }
-foreach ($required in @('mobile/package.json', 'mobile/src/main.js', 'mobile/android/gradle/wrapper/gradle-wrapper.jar', 'src/main.js', 'supabase/migrations/20260930041856_mobile_private_android.sql')) {
+foreach ($required in @('.vercelignore', 'mobile/package.json', 'mobile/src/main.js', 'mobile/android/gradle/wrapper/gradle-wrapper.jar', 'src/main.js', 'supabase/migrations/20260930041856_mobile_private_android.sql')) {
     if ($required -notin $files) { throw "Required source file is missing from the allowlist: $required" }
 }
 
