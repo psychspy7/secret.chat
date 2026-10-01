@@ -18,7 +18,7 @@ async function create(client,publicKey,vault){
   const code=publicKey?randomAccessCode():'QA'+crypto.randomUUID().replaceAll('-','').slice(0,12).toUpperCase();
   const raw=publicKey?await roomKeyFromAccessCode(code):randomKey(),key=await importRoomKey(raw);
   const args={p_code_hash:await sha256(code),p_key_hash:await sha256(raw),p_label_cipher:await encrypt(key,code),p_host_key_cipher:publicKey?await wrapRoomKey(publicKey,raw):await encrypt(vault,raw)};
-  const result=await client.rpc('create_room',args);
+  const result=await client.rpc('create_room_v15',{...args,p_duration_hours:2});
   if(result.error)return {error:result.error};
   ok(await client.rpc('join_room',{p_code_hash:await sha256(code),p_key_hash:await sha256(raw),p_name_cipher:await encrypt(key,'Creator')}));
   const room={...result.data[0],code,raw,key,args};rooms.push(room);return room;
@@ -40,8 +40,8 @@ try{
   });
   const room=rooms.find(r=>r.is_public_created);
   await check('public room expiry and administrator key access',async()=>{
-    assert.ok(Date.parse(room.expires_at)>Date.now()+23*3600000);
-    assert.ok(Date.parse(room.expires_at)<Date.now()+25*3600000);
+    assert.ok(Date.parse(room.expires_at)>Date.now()+1.9*3600000);
+    assert.ok(Date.parse(room.expires_at)<Date.now()+2.1*3600000);
     assert.equal(await unwrapRoomKey(privateKey,room.host_key_cipher),room.raw);
     assert.equal(ok(await host.from('rooms').select('id').eq('id',room.id).single()).id,room.id);
   });
@@ -69,6 +69,21 @@ try{
     const burst=await Promise.all(Array.from({length:7},()=>guest.rpc('send_message',{p_room_id:room.id,p_body_cipher:body})));
     assert.ok(burst.some(r=>r.error?.message.includes('slow down')));
     assert.ok((await guest.rpc('send_message',{p_room_id:room.id,p_body_cipher:{v:2}})).error);
+  });
+  await check('timed room extension is creator-requested and administrator-approved',async()=>{
+    assert.ok((await creator.rpc('create_room_v15',{...room.args,p_duration_hours:25})).error);
+    assert.ok((await guest.rpc('request_room_extension',{p_room_id:room.id,p_hours:2})).error);
+    assert.ok((await creator.rpc('extend_room_time',{p_room_id:room.id,p_hours:2})).error);
+    const requestId=ok(await creator.rpc('request_room_extension',{p_room_id:room.id,p_hours:3}));
+    assert.equal(ok(await creator.rpc('request_room_extension',{p_room_id:room.id,p_hours:2})),requestId);
+    assert.ok(ok(await host.rpc('list_room_extension_requests')).some(r=>r.id===requestId));
+    assert.ok((await creator.rpc('review_room_extension',{p_request_id:requestId,p_approve:true})).error);
+    ok(await host.rpc('review_room_extension',{p_request_id:requestId,p_approve:true}));
+    const latest=ok(await creator.from('rooms').select('expires_at').eq('id',room.id).single());
+    assert.equal(Date.parse(latest.expires_at),Date.parse(room.expires_at)+3*3600000);
+    assert.ok((await host.rpc('review_room_extension',{p_request_id:requestId,p_approve:true})).error);
+    ok(await host.rpc('extend_room_time',{p_room_id:room.id,p_hours:1}));
+    assert.equal(Date.parse(ok(await host.from('rooms').select('expires_at').eq('id',room.id).single()).expires_at),Date.parse(latest.expires_at)+3600000);
   });
   await check('only the administrator can clear, close, and approve creator deletion requests',async()=>{
     ok(await creator.rpc('touch_room',{p_room_id:room.id,p_leave:true}));

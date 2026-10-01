@@ -1,4 +1,4 @@
-# SideChat · Managed by Kitty Corp.
+# SecretChat · Managed by Kitty Corp.
 
 A responsive private chat website for Vercel or Netlify with Supabase Auth, Database and Realtime. The current deployment is https://secret-chat-sable.vercel.app. There is no custom always-on server. Each browser encrypts and decrypts messages using AES-256-GCM.
 
@@ -6,11 +6,11 @@ A responsive private chat website for Vercel or Netlify with Supabase Auth, Data
 
 - Anyone can create an invitation-only room without registering an email address. Creators enter a temporary name and appear as Host (Name). Supabase anonymous authentication gives each browser session an identity.
 - The permanent administrator signs in at /SECRET to see all rooms, join them, export retained chat, clear messages and close rooms.
-- A room creator can copy the invitation, chat and leave like other participants, and request room deletion. The administrator must approve the request before the room closes. Database functions enforce this restriction.
+- A room creator chooses a 1–24 hour duration, can copy the invitation, chat and leave like other participants, and request room deletion or extra time. The administrator must approve a deletion before the room closes, or an extension before its expiry changes. The administrator can also extend timed rooms directly and create permanent host rooms. Database functions enforce this restriction.
 - The administrator can publish, edit, hide and remove public notices from /SECRET. Visitors see published notices on the homepage. Incoming-message sound is optional and off by default.
 - The home page includes support addresses for Bitcoin on BITCOIN and USDT on ETHEREUM.
 
-Public rooms last 24 hours. Each anonymous identity can have 3 active rooms and create 10 in 24 hours. The service caps public creation at 50 active rooms and 200 rooms created per 24 hours. Each room allows 20 simultaneously active participants, 100 participant identities over its lifetime, and 5 messages per 5 seconds per sender. It retains the newest 1,000 encrypted messages; the browser keeps at most 500 decrypted messages in memory. These limits are enforced by database functions, including against simultaneous requests. Actual capacity also depends on the Supabase plan and network conditions.
+Public rooms last 1–24 hours, selected by their creator. Each anonymous identity can have 3 active rooms and create 10 in 24 hours. The service caps public creation at 50 active rooms and 200 rooms created per 24 hours. Each room allows 20 simultaneously active participants, 100 participant identities over its lifetime, and 5 messages per 5 seconds per sender. It retains the newest 1,000 encrypted messages; the browser keeps at most 500 decrypted messages in memory. These limits are enforced by database functions, including against simultaneous requests. Actual capacity also depends on the Supabase plan and network conditions.
 
 The browser handles encryption and rendering on each participant's device. The app does not require peer-to-peer networking or use a visitor's device to relay someone else's traffic.
 
@@ -25,11 +25,11 @@ The website includes a strict content security policy, no analytics scripts, and
 ## Set up a new Supabase project
 
 1. Create a Supabase project. Enable **Anonymous Sign-Ins** in Authentication and configure Auth CAPTCHA for a public site.
-2. Apply the SQL files in supabase/migrations in filename order. The privacy-and-retention migration installs a five-minute expiry cleanup job using pg_cron. It only operates on SideChat public rooms. The admin-controls migration adds deletion approvals and public notices.
+2. Apply the SQL files in supabase/migrations in filename order. The privacy-and-retention migration installs a five-minute expiry cleanup job using pg_cron. It only operates on SecretChat public rooms. The admin-controls migration adds deletion approvals and public notices.
 3. Create a confirmed permanent Auth user with a strong password. Choose a Host ID of 3–32 lowercase letters, digits, dots, underscores or hyphens. Its internal sign-in email must be HOST_ID@kittycorp.invalid. Add its user UUID in SQL using: insert into public.hosts(user_id,host_id,vault_salt) values ('USER_UUID','HOST_ID',encode(gen_random_bytes(24),'base64'));
 4. Set the local variables below. Run npm run provision:host-keypair once using the host credentials. It creates an RSA key pair locally, stores the public key in Supabase and stores the private key encrypted under the host password. It refuses to overwrite an existing pair.
 
-Once the permanent host account exists, disable unwanted public email registration. Anonymous sign-ins must remain enabled. Plan separate retention for old Supabase anonymous Auth accounts as described in Supabase documentation.
+Once the permanent host account exists, configure registration according to the mobile app's confirmed Google/email sign-in requirements. Public email delivery requires custom SMTP; do not disable email registration if offering new email accounts. Anonymous sign-ins must remain enabled. Plan separate retention for old Supabase anonymous Auth accounts as described in Supabase documentation.
 
 ## Run locally
 
@@ -54,3 +54,7 @@ To deploy to another domain, review allowed origins and the Site URL in Supabase
 - npm run check:integration checks real Supabase login, concurrent creation limits, outsider access, encrypted joins and messages, rate limits, admin-only controls, deletion approvals, and notice permissions. It creates temporary test rooms and closes them afterward.
 
 For a production release, also check two real browsers or devices, tab hiding, reconnection, responsive layout, and CSV export.
+
+## Android v1.5
+
+The Android app is in [mobile/](mobile/README.md). It uses confirmed Google/email accounts, local encrypted received-message history, an optional fingerprint lock, your supplied icon and sound, timed rooms and permanent admin groups, and approved extensions. Its rooms use a separate invitation system from the legacy website. The verified mobile administrator is `viratanand1221@gmail.com`; it has no implicit access to mobile chat content. See [UPDATES.md](UPDATES.md) for future website deployment, APK/AAB builds, email sender setup, and release publishing.

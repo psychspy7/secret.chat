@@ -1,0 +1,77 @@
+apply plugin: 'com.android.application'
+
+def signingFile = rootProject.file('../../.android-signing/keystore.properties')
+def signingProperties = new Properties()
+if (signingFile.exists()) { signingFile.withInputStream { signingProperties.load(it) } }
+def clientProperties = new Properties()
+def clientFile = rootProject.file('../../.env.local')
+if (clientFile.exists()) { clientFile.withReader('UTF-8') { clientProperties.load(it) } }
+def clientUrl = clientProperties.getProperty('VITE_SUPABASE_URL', '')
+def clientKey = clientProperties.getProperty('VITE_SUPABASE_PUBLISHABLE_KEY', '')
+if (clientKey && !clientKey.startsWith('sb_publishable_')) { throw new GradleException('Use only a public Supabase publishable key in the native configuration.') }
+
+android {
+    namespace = "com.kittycorp.sidechat"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.kittycorp.sidechat"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 5
+        versionName "1.5.0"
+        buildConfigField 'String', 'SUPABASE_URL', '"' + clientUrl.replace('"', '').replace('\\', '') + '"'
+        buildConfigField 'String', 'SUPABASE_PUBLISHABLE_KEY', '"' + clientKey.replace('"', '').replace('\\', '') + '"'
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildFeatures { buildConfig true }
+    signingConfigs {
+        release {
+            if (signingFile.exists()) {
+                storeFile file(signingProperties['storeFile'])
+                storePassword signingProperties['storePassword']
+                keyAlias signingProperties['keyAlias']
+                keyPassword signingProperties['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            debuggable false
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.biometric:biometric:1.1.0"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.lifecycle('Firebase client configuration absent: background push is disabled in this build.')
+}

@@ -18,4 +18,22 @@ release/
 *.zip
 test-results/
 playwright-report/
+.android-tools/
+.android-signing/
+.gradle-cache/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/**/build/
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/android/app/google-services.json
+*.keystore
+*.jks
+*.apk
+*.aab
+*service-account*.json
+.mobile-secrets/
+.firebase/
+supabase/.temp/
 

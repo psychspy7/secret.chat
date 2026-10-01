@@ -1,0 +1,11 @@
+{
+  "appId": "com.kittycorp.sidechat",
+  "appName": "SecretChat",
+  "webDir": "dist",
+  "server": { "androidScheme": "https", "cleartext": false },
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false, "backgroundColor": "#070D12", "loggingBehavior": "none" },
+  "plugins": {
+    "LocalNotifications": { "smallIcon": "ic_stat_sidechat", "iconColor": "#9DF0C8", "sound": "radio_chirp.wav" },
+    "PushNotifications": { "presentationOptions": [] }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "hosting": {
+    "site": "kitty-sidechat-20260930",
+    "public": "mobile/info-site",
+    "ignore": ["**/.*", "**/node_modules/**", "**/*.apk", "**/*.aab"],
+    "headers": [{"source":"**","headers":[
+      {"key":"Content-Security-Policy","value":"default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"},
+      {"key":"X-Content-Type-Options","value":"nosniff"},
+      {"key":"Referrer-Policy","value":"no-referrer"},
+      {"key":"Permissions-Policy","value":"camera=(), microphone=(), geolocation=()"}
+    ]}]
+  }
+}
