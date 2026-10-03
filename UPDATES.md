@@ -1,6 +1,6 @@
 # SecretChat updates
 
-Current Android release: **1.6.0 / build 7**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
+Current Android release: **1.6.1 / build 8**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
 
 ## Update the website
 
@@ -13,7 +13,7 @@ The browser website and Android app currently use separate room systems. Their i
 ## Update the Android app
 
 1. Keep the same package ID, `com.kittycorp.sidechat`, and **restore the original private `.android-signing` folder**. Never upload it to GitHub or include it in the source ZIP. Keep an encrypted private backup. Changing the signing key prevents updates to existing installations.
-2. Increase `versionCode` beyond **7** and set the new `versionName` in `mobile/android/app/build.gradle`. Align `mobile/package.json`, its lockfile, and the browser-preview version in `mobile/src/main.js`.
+2. Increase `versionCode` beyond **8** and set the new `versionName` in `mobile/android/app/build.gradle`. Align `mobile/package.json`, its lockfile, and the browser-preview version in `mobile/src/main.js`.
 3. Restore your public client settings in root `.env.local` and download `mobile/android/app/google-services.json` from the Firebase project. These files are excluded from the clean source ZIP. Never use a Supabase service-role key in the app.
 4. Run these commands from the repository root in PowerShell:
 
@@ -45,7 +45,7 @@ Email sign-in uses a one-time link opened on the same device that requested it. 
 
 ## Clean source ZIP
 
-Run `./mobile/scripts/package-source.ps1 -Name SecretChat-v1.6-Source.zip`. The archive includes website and Android source, migrations, icon and notification assets. It excludes APK/AAB files, client configuration files, server keys, signing keys/passwords, caches, and build folders, and scans the actual archive contents for known local credentials.
+Run `./mobile/scripts/package-source.ps1 -Name SecretChat-v1.6.1-Source.zip`. The archive includes website and Android source, migrations, icon and notification assets. It excludes APK/AAB files, client configuration files, server keys, signing keys/passwords, caches, and build folders, and scans the actual archive contents for known local credentials.
 
 ## Research and shared clearing in v1.6
 

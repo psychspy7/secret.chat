@@ -1,5 +1,7 @@
 # SecretChat Android
 
+Current release: **1.6.1 / build 8**. See [UI release checks](V1.6.1-RELEASE-CHECKS.md).
+
 The Android app is in `mobile/`. The existing browser website remains at the repository root. They share a Supabase project but use separate room and storage systems; website invitation codes do not open mobile rooms.
 
 ## What the Android app does
