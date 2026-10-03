@@ -1,3 +1,5 @@
+Current release checks: [v1.6 / build 7](../V1.6-RELEASE-CHECKS.md). The following is the historical v1.5 record.
+
 # SecretChat 1.5.0 beta — build 6 — 1 October 2026
 
 Package: `com.kittycorp.sidechat`. Visible name: **SecretChat**. Android 7.0+ (API 24), target API 36, JDK 21. The original release signing certificate is retained.

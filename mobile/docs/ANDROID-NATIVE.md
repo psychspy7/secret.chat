@@ -1,6 +1,6 @@
 # Android build and release
 
-The app identifier is `com.kittycorp.sidechat`. The current release is version `1.5.0`, code `6`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK.
+The app identifier is `com.kittycorp.sidechat`. The current release is version `1.6.0`, code `7`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK.
 
 From the repository root in PowerShell:
 
@@ -41,3 +41,7 @@ If Android has not allowed this app to request installations, the method opens t
 For a release, increase `versionCode` and `versionName` in `mobile/android/app/build.gradle`, build with the original signing key, host the APK at a direct HTTPS download URL, and publish the exact hash and version through the administrator's release controls. A redirecting download URL is intentionally rejected. Distribute a Google Play build using Play's update flow instead of the sideload updater if publishing to Play.
 
 References: [Capacitor Android native code](https://capacitorjs.com/docs/android/custom-code), [Android Keystore](https://developer.android.com/privacy-and-security/keystore), [Capacitor push setup](https://capacitorjs.com/docs/apis/push-notifications), [Android secure activities](https://developer.android.com/security/fraud-prevention/activities).
+
+## Research export
+
+The administrator explicitly selects View / export for a consented research room and unlocks its password-encrypted vault locally. Its imported RSA private key is nonextractable and kept only in memory, discarded on backgrounding/sign-out. Export sanitizes spreadsheet formula-like cells and requires an explicit Share/Save chooser. The exported plaintext CSV is outside encrypted chat storage and may be copied by its recipient. One temporary export (maximum 8 MiB) is kept in the app-private cache; the next export replaces it. Standard FileProvider exposes only its cache directory with temporary read access. This feature does not give administrators private-room keys.

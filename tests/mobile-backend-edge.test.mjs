@@ -17,6 +17,8 @@ await import('../supabase/functions/mobile-device/index.ts');
 const device = registered;
 await import('../supabase/functions/mobile-presence/index.ts');
 const presence = registered;
+await import('../supabase/functions/mobile-release/index.ts');
+const release = registered;
 const actor = 'c5f58182-46c7-4876-93db-690ee17b11ad';
 const room = 'fbe4fae0-b734-4d1b-83de-0bd3866da4b9';
 const message = '55d87f92-51a0-4d5e-93e5-a5db810f1d47';
@@ -26,7 +28,7 @@ const request = (value, extra = {}) => new Request('https://fixture.test', { met
 
 test('all Edge endpoints reject missing auth before contacting server', async t => {
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Unexpected network'); });
-  for (const handler of [send, device, presence]) {
+  for (const handler of [send, device, presence, release]) {
     const result = await handler(new Request('https://fixture.test', { method: 'POST', body: '{}' }));
     assert.equal(result.status, 403);
     assert.match((await result.json()).error, /Google/);
@@ -107,11 +109,44 @@ test('FCM payload is generic, account-scoped, private and uses the radio channel
   });
   const { dispatchPresence } = await import('../supabase/functions/_shared/push.ts');
   await dispatchPresence('other-member', room);
-  assert.equal(pushed.notification.body, 'Someone joined the room');
+  assert.equal(pushed.notification.body, 'Someone joined the room.');
   assert.equal(pushed.data.user_id, actor);
   assert.equal(pushed.android.notification.channel_id, 'secretchat_room_v15');
   assert.equal(pushed.android.notification.sound, 'secretchat_ping_v15');
   assert.equal(pushed.android.notification.visibility, 'PRIVATE');
   assert.equal(pushed.data.message, undefined);
+  env.delete('FCM_SERVICE_ACCOUNT_JSON');
+});
+
+test('release publication requires the database administrator check before notifying',async t=>{
+  t.mock.method(globalThis,'fetch',async url=>{
+    if(url.endsWith('/auth/v1/user')) return response(identity);
+    assert.ok(url.endsWith('/rpc/mobile_admin_publish_release'));
+    return new Response(JSON.stringify({message:'Administrator access required.'}),{status:403});
+  });
+  const result=await release(request({p_version_code:7}));
+  assert.equal(result.status,403);
+  await Promise.all(pending.splice(0));
+});
+test('FCM message and update alerts exclude plaintext and finish the update outbox',async t=>{
+  // Prior test populated the short-lived OAuth cache with a disposable fixture.
+  env.set('FCM_SERVICE_ACCOUNT_JSON',JSON.stringify({project_id:'fixture-project',private_key:'unused-cached-fixture'}));
+  const sent=[]; let batchCalls=0, finished;
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    if(url.endsWith('/rpc/mobile_edge_claim_push')) return response({id:message,type:'room_message',devices:[{token:'device-fixture',user_id:actor}]});
+    if(url.endsWith('/rpc/mobile_edge_finish_push')) return response(null);
+    if(url.endsWith('/rpc/mobile_edge_release_batch')) {
+      batchCalls++; finished=JSON.parse(options.body).p_finish;
+      return response(batchCalls===1 ? [{token:'device-fixture',user_id:actor,version_code:7}] : []);
+    }
+    if(url.includes('fcm.googleapis.com')) {sent.push(JSON.parse(options.body).message); return response({name:'fixture'});}
+    throw new Error('Unexpected endpoint');
+  });
+  const {dispatchPresence,dispatchRelease}=await import('../supabase/functions/_shared/push.ts');
+  await dispatchPresence('other-member',room); await dispatchRelease();
+  assert.equal(sent[0].data.type,'room_message'); assert.equal(sent[0].notification.body,'A new message arrived in your room.');
+  assert.equal(sent[1].data.type,'app_update'); assert.equal(sent[1].data.user_id,actor);
+  assert.equal(sent[1].data.apk_url,undefined); assert.equal(sent[0].data.text,undefined);
+  assert.deepEqual(finished,[{token:'device-fixture',version_code:7}]);
   env.delete('FCM_SERVICE_ACCOUNT_JSON');
 });

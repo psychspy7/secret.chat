@@ -7,6 +7,7 @@ from PIL import Image
 parser = argparse.ArgumentParser()
 parser.add_argument('--icon', required=True)
 parser.add_argument('--sound', required=True)
+parser.add_argument('--monogram', action='store_true', help='Artwork already has a generous internal safe area')
 args = parser.parse_args()
 mobile = Path(__file__).resolve().parents[1]
 res = mobile / 'android/app/src/main/res'
@@ -20,9 +21,9 @@ for density, size, adaptive in [('mdpi',48,108),('hdpi',72,162),('xhdpi',96,216)
     icon = image.resize((size, size), Image.Resampling.LANCZOS)
     icon.save(target / 'ic_launcher.png')
     icon.save(target / 'ic_launcher_round.png')
-    foreground = Image.new('RGBA',(adaptive,adaptive),(8,13,31,255))
+    foreground = Image.new('RGBA',(adaptive,adaptive),image.getpixel((0,0)) + (255,) if args.monogram else (8,13,31,255))
     # The complete supplied logo fits within the adaptive icon's safe zone.
-    safe = round(adaptive * 0.62)
+    safe = round(adaptive * (0.92 if args.monogram else 0.62))
     foreground.paste(image.resize((safe,safe),Image.Resampling.LANCZOS),((adaptive-safe)//2,(adaptive-safe)//2))
     foreground.save(target / 'ic_launcher_foreground.png')
 raw = res / 'raw'

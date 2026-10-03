@@ -1,5 +1,5 @@
 import { preflight, body, identify, rpc, uuid, pushConfigured, json, errorResponse } from '../_shared/mobile.ts';
-import { dispatchPresence } from '../_shared/push.ts';
+import { dispatchPresence, dispatchRelease } from '../_shared/push.ts';
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 Deno.serve(async (req: Request) => {
   const response = preflight(req); if (response) return response;
@@ -8,7 +8,7 @@ Deno.serve(async (req: Request) => {
     const input = await body(req, 500);
     const roomId = uuid(input.room_id);
     const online = await rpc('mobile_heartbeat', { p_room_id: roomId }, authorization);
-    EdgeRuntime.waitUntil(dispatchPresence(userId, roomId).catch(() => {
+    EdgeRuntime.waitUntil(Promise.all([dispatchPresence(userId, roomId),dispatchRelease()]).catch(() => {
       // Operational signal only: no tokens, IPs, room IDs, names or message content.
       console.warn('mobile_presence_push_retry');
     }));

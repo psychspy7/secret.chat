@@ -2,12 +2,14 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Device, native, localData } from './storage.js';
 import { invoke } from './backend.js';
+import { acceptAlert } from './alert-policy.js';
 
 let notificationAudio;
 let pushToken;
 let registrationReady = false;
 let currentUser;
 let onOpenRoom;
+let onUpdate;
 let serverPushConfigured = false;
 const seen = new Map();
 export const notificationStatus = { enabled: false, pushConfigured: false, message: '' };
@@ -20,8 +22,8 @@ export function chirp() {
     void notificationAudio.play().catch(() => {});
   } catch { /* Audio is optional and may be disabled by the OS. */ }
 }
-export async function loadNotificationSettings(userId, openRoom) {
-  currentUser = userId; onOpenRoom = openRoom;
+export async function loadNotificationSettings(userId, openRoom, update) {
+  currentUser = userId; onOpenRoom = openRoom; onUpdate = update;
   seen.clear();
   const saved = await localData.read(userId, 'preferences', {});
   notificationStatus.enabled = saved.notifications === true;
@@ -33,6 +35,7 @@ export async function loadNotificationSettings(userId, openRoom) {
     if (!registrationReady) {
       registrationReady = true;
       await LocalNotifications.addListener('localNotificationActionPerformed', event => {
+        if (event.notification.extra?.type === 'app_update' && event.notification.extra?.user_id === currentUser) { onUpdate?.(true); return; }
         const roomId = event.notification.extra?.room_id;
         if (roomId && currentUser && event.notification.extra?.user_id === currentUser) onOpenRoom?.(roomId);
       });
@@ -42,8 +45,16 @@ export async function loadNotificationSettings(userId, openRoom) {
       });
       await PushNotifications.addListener('registrationError', () => { notificationStatus.message = 'Background alerts are unavailable. Room alerts still work while the app is open.'; });
       await PushNotifications.addListener('pushNotificationActionPerformed', event => {
+        if (event.notification.data?.type === 'app_update' && event.notification.data?.user_id === currentUser) { onUpdate?.(true); return; }
         const roomId = event.notification.data?.room_id;
         if (roomId && currentUser && event.notification.data?.user_id === currentUser) onOpenRoom?.(roomId);
+      });
+      await PushNotifications.addListener('pushNotificationReceived', event => {
+        const data = event.data;
+        if (!currentUser || !notificationStatus.enabled || data?.user_id !== currentUser) return;
+        if (data.type === 'app_update') { onUpdate?.(false); return; }
+        if (!['room_join','room_message'].includes(data.type)) return;
+        void notifyActivity(data.type, data, data.room_id, currentUser).catch(() => {});
       });
     }
     if (notificationStatus.enabled && notificationStatus.pushConfigured) await PushNotifications.register();
@@ -95,11 +106,23 @@ export async function announcePresence(room, event, userId) {
   if (!notificationStatus.enabled || event?.online !== true || event?.notify !== true || !event?.user_id || event.user_id === userId || currentUser !== userId) return;
   const timestamp = Date.parse(event.created_at);
   if (!Number.isFinite(timestamp) || Math.abs(Date.now() - timestamp) > 15000) return;
-  const key = `${room.id}:${event.user_id}`;
-  if (Date.now() - (seen.get(key) || 0) < 90000) return;
-  seen.set(key, Date.now());
-  for (const [item, at] of seen) if (Date.now() - at > 300000) seen.delete(item);
+  await notifyActivity('room_join',event,room.id,userId);
+}
+async function notifyActivity(type, event, roomId, userId) {
+  if (!notificationStatus.enabled || currentUser !== userId || !acceptAlert(seen,type,event,roomId)) return;
+  const body = type === 'room_message' ? 'A new message arrived in your room.' : type === 'app_update' ? 'A SecretChat update is available. Tap to install.' : 'Someone joined the room.';
   if (native) {
-    await LocalNotifications.schedule({ notifications: [{ id: Math.floor(Math.random() * 2000000000) + 1, title: 'SecretChat · Room activity', body: 'Someone joined the room.', channelId: 'secretchat_room_v15', sound: 'secretchat_ping_v15.mp3', extra: { room_id: room.id, user_id: userId }, smallIcon: 'ic_stat_sidechat' }] });
+    await LocalNotifications.schedule({ notifications: [{ id: Math.floor(Math.random() * 2000000000) + 1, title: type === 'app_update' ? 'SecretChat · Update ready' : 'SecretChat · Room activity', body, channelId: 'secretchat_room_v15', sound: 'secretchat_ping_v15.mp3', extra: { type, room_id: roomId, user_id: userId }, smallIcon: 'ic_stat_sidechat' }] });
   } else chirp();
+}
+export async function announceMessage(room, envelope, userId) {
+  if (room.watched === false || envelope.user_id === userId) return;
+  await notifyActivity('room_message',envelope,room.id,userId);
+}
+export async function announceUpdate(release, userId) {
+  if (!notificationStatus.enabled || currentUser !== userId) return;
+  const preferences = await localData.read(userId,'preferences',{});
+  if (Number(preferences.notifiedRelease || 0) >= release.version_code) return;
+  await notifyActivity('app_update',{event_id:String(release.version_code)},null,userId);
+  await localData.update(userId,'preferences',{},old=>({...old,notifiedRelease:release.version_code}));
 }

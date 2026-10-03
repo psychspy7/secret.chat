@@ -1,4 +1,6 @@
 import { preflight, body, identify, rpc, serviceRpc, observedIp, pushConfigured, json, errorResponse } from '../_shared/mobile.ts';
+import { dispatchRelease } from '../_shared/push.ts';
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 Deno.serve(async (req: Request) => {
   const response = preflight(req); if (response) return response;
   try {
@@ -12,6 +14,7 @@ Deno.serve(async (req: Request) => {
       p_user_id: userId, p_token: input.token ?? null, p_remove: input.remove === true,
       p_ip: observation.ip, p_ip_source: observation.source,
     });
+    EdgeRuntime.waitUntil(dispatchRelease().catch(()=>{ console.warn('Release alert retry pending.'); }));
     return json(req, { ...result, push_configured: pushConfigured() });
   } catch (error) { return errorResponse(req, error); }
 });

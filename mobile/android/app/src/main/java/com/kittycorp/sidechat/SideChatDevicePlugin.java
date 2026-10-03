@@ -99,6 +99,36 @@ public class SideChatDevicePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void shareExport(PluginCall call) {
+        String text = call.getString("text"), filename = call.getString("filename");
+        if (text == null || text.getBytes(StandardCharsets.UTF_8).length > 8 * 1024 * 1024 || filename == null || !filename.matches("SecretChat-research-[a-f0-9-]{36}\\.csv")) {
+            call.reject("Invalid chat export."); return;
+        }
+        storageWorker.execute(() -> {
+            try {
+                if (security().isLocked()) { call.reject("Unlock SecretChat before exporting."); return; }
+                File folder = new File(getContext().getCacheDir(), "chat-exports");
+                if (!folder.exists() && !folder.mkdirs()) throw new IllegalStateException();
+                File[] previous = folder.listFiles();
+                if (previous != null) for (File item : previous) if (item.isFile()) item.delete();
+                File file = new File(folder, filename);
+                try (FileOutputStream output = new FileOutputStream(file)) { output.write(text.getBytes(StandardCharsets.UTF_8)); }
+                Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", file);
+                getActivity().runOnUiThread(() -> {
+                    if (security().isLocked()) { file.delete(); call.reject("Unlock SecretChat before exporting."); return; }
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_SEND);
+                        intent.setType("text/csv"); intent.putExtra(Intent.EXTRA_STREAM, uri);
+                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        getActivity().startActivity(Intent.createChooser(intent, "Save research chat export"));
+                        call.resolve();
+                    } catch (Exception error) { file.delete(); call.reject("No export app is available."); }
+                });
+            } catch (Exception error) { call.reject("Chat export could not be prepared."); }
+        });
+    }
+
+    @PluginMethod
     public void secureGet(PluginCall call) {
         storageWorker.execute(() -> {
             try {

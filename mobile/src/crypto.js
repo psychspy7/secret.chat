@@ -33,23 +33,25 @@ export async function roomKey(code) {
   const bytes = await crypto.subtle.digest('SHA-256', encoder.encode('sidechat-mobile-encryption-v1:' + code));
   return crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
-function aad(roomId, userId, id, sentAt) { return encoder.encode(JSON.stringify(['sidechat-mobile-v1', roomId, userId, id, sentAt])); }
-export async function encryptMessage(key, { roomId, userId, id, text, sentAt = new Date().toISOString() }) {
+function aad(roomId, userId, id, sentAt, epoch) { return encoder.encode(JSON.stringify(epoch ? ['secretchat-mobile-v2', roomId, userId, id, sentAt, epoch] : ['sidechat-mobile-v1', roomId, userId, id, sentAt])); }
+export async function encryptMessage(key, { roomId, userId, id, text, sentAt = new Date().toISOString(), epoch }) {
   if (!validId(roomId) || !validId(userId) || !validId(id)) throw new Error('Invalid message identity.');
   const body = String(text || '').trim();
   if (!body || body.length > MAX_MESSAGE_LENGTH) throw new Error(`Messages must contain 1–${MAX_MESSAGE_LENGTH} characters.`);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(roomId, userId, id, sentAt) }, key, encoder.encode(JSON.stringify({ text: body })));
-  return { v: 1, iv: toB64(iv), data: toB64(data), sent_at: sentAt };
+  if (epoch !== undefined && (!Number.isSafeInteger(epoch) || epoch < 1)) throw new Error('Invalid chat epoch.');
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(roomId, userId, id, sentAt, epoch) }, key, encoder.encode(JSON.stringify({ text: body })));
+  return { v: epoch ? 2 : 1, ...(epoch ? { epoch } : {}), iv: toB64(iv), data: toB64(data), sent_at: sentAt };
 }
 export async function decryptMessage(key, envelope, expectedRoomId) {
   const { id, room_id: roomId, user_id: userId, payload, created_at: createdAt } = envelope || {};
-  if (!validId(id) || !validId(roomId) || !validId(userId) || roomId !== expectedRoomId || payload?.v !== 1 || typeof payload.data !== 'string' || payload.data.length > 14000) throw new Error('Invalid message envelope.');
+  if (!validId(id) || !validId(roomId) || !validId(userId) || roomId !== expectedRoomId || ![1, 2].includes(payload?.v) || typeof payload.data !== 'string' || payload.data.length > 14000) throw new Error('Invalid message envelope.');
+  if (payload.v === 2 && (!Number.isSafeInteger(payload.epoch) || payload.epoch < 1)) throw new Error('Invalid chat epoch.');
   const sent = Date.parse(payload.sent_at), created = Date.parse(createdAt);
   if (!Number.isFinite(sent) || !Number.isFinite(created) || Math.abs(sent - created) > 300000 || created > Date.now() + 300000) throw new Error('Message timestamp could not be verified.');
   const iv = fromB64(payload.iv);
   if (iv.length !== 12) throw new Error('Invalid message nonce.');
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad(roomId, userId, id, payload.sent_at) }, key, fromB64(payload.data));
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad(roomId, userId, id, payload.sent_at, payload.v === 2 ? payload.epoch : undefined) }, key, fromB64(payload.data));
   const body = JSON.parse(decoder.decode(plaintext));
   if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > MAX_MESSAGE_LENGTH) throw new Error('Invalid message content.');
   return { id, room_id: roomId, user_id: userId, text: body.text, created_at: createdAt, display_name: String(envelope.display_name || 'Member').slice(0, 48), is_creator: envelope.is_creator === true };
