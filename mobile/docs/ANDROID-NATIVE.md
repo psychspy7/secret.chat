@@ -1,6 +1,6 @@
 # Android build and release
 
-The app identifier is `com.kittycorp.sidechat`. The current release is version `1.6.0`, code `7`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK.
+The app identifier is `com.kittycorp.sidechat`. The current release is version `1.6.1`, code `8`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK. See the [owner handover](OWNER-HANDOVER.md) before moving computers or preparing an update.
 
 From the repository root in PowerShell:
 

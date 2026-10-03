@@ -55,6 +55,6 @@ To deploy to another domain, review allowed origins and the Site URL in Supabase
 
 For a production release, also check two real browsers or devices, tab hiding, reconnection, responsive layout, and CSV export.
 
-## Android v1.5
+## Android 1.6.1 / build 8
 
-The Android app is in [mobile/](mobile/README.md). It uses confirmed Google/email accounts, local encrypted received-message history, an optional fingerprint lock, your supplied icon and sound, timed rooms and permanent admin groups, and approved extensions. Its rooms use a separate invitation system from the legacy website. The verified mobile administrator is `viratanand1221@gmail.com`; it has no implicit access to mobile chat content. See [UPDATES.md](UPDATES.md) for future website deployment, APK/AAB builds, email sender setup, and release publishing.
+The Android app is in [mobile/](mobile/README.md). It uses confirmed Google/email accounts, local encrypted received-message history, an optional fingerprint lock, the premium monogram and supplied sound, timed rooms and permanent admin groups, approved extensions, shared clearing and optional consented research archives. Its rooms use a separate invitation system from the legacy website. The verified mobile administrator is `viratanand1221@gmail.com`; private Android rooms have no admin archive or decryption key. See [UPDATES.md](UPDATES.md) for release publishing and the [owner handover](mobile/docs/OWNER-HANDOVER.md) for maintenance, private backups and working with another developer or AI tool.

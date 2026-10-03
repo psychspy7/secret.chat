@@ -2,6 +2,8 @@
 
 Current Android release: **1.6.1 / build 8**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
 
+For computer transfers, private backups, source locations, future AI tools and troubleshooting, read the [owner handover](mobile/docs/OWNER-HANDOVER.md). A [copyable AI handover prompt](mobile/docs/AI-HANDOVER-PROMPT.md) accompanies it.
+
 ## Update the website
 
 1. Edit the repository, apply any new Supabase migrations, and run `npm ci`, `npm run check`, and `npm run build`.
