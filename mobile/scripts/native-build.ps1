@@ -14,20 +14,8 @@ if (-not (Test-Path "$env:JAVA_HOME/bin/keytool.exe")) { throw 'Run native-setup
 $signingDir = Join-Path $workspace '.android-signing'
 $signingProperties = Join-Path $signingDir 'keystore.properties'
 $keyStore = Join-Path $signingDir 'sidechat-release.p12'
-if (-not (Test-Path $signingProperties)) {
-    if (Test-Path $keyStore) { throw 'Signing key exists without its properties file. Restore the original properties; do not replace your update signing key.' }
-    New-Item -ItemType Directory -Force -Path $signingDir | Out-Null
-    $random = [byte[]]::new(32)
-    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-    $rng.GetBytes($random)
-    $rng.Dispose()
-    $env:SIDECHAT_KEYSTORE_PASSWORD = [Convert]::ToBase64String($random)
-    & "$env:JAVA_HOME/bin/keytool.exe" -genkeypair -keystore $keyStore -storetype PKCS12 -storepass:env SIDECHAT_KEYSTORE_PASSWORD -keypass:env SIDECHAT_KEYSTORE_PASSWORD -alias sidechat -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=SecretChat Release, O=Kitty Corp'
-    if ($LASTEXITCODE -ne 0) { throw 'Release signing key creation failed.' }
-    $properties = "storeFile=" + $keyStore.Replace('\', '/') + "`nstorePassword=$env:SIDECHAT_KEYSTORE_PASSWORD`nkeyAlias=sidechat`nkeyPassword=$env:SIDECHAT_KEYSTORE_PASSWORD`n"
-    [IO.File]::WriteAllText($signingProperties, $properties, [Text.UTF8Encoding]::new($false))
-    Remove-Item Env:SIDECHAT_KEYSTORE_PASSWORD
-    Write-Output 'Created a private release signing key in .android-signing. Back up this folder securely; future updates require the same key.'
+if (-not (Test-Path -LiteralPath $signingProperties) -or -not (Test-Path -LiteralPath $keyStore)) {
+    throw 'Restore the original .android-signing key and properties before building an update. A replacement key cannot update existing installations.'
 }
 Push-Location $mobileDir
 try {

@@ -1,3 +1,5 @@
+Canonical workspace: C:/Users/HP/Downloads/Project (Kitty-Corp). Read AGENTS.md and START-HERE.md there first. Continue inside PRIVATE CHAT ROOM (KITTY CORP)/SecretChat-Source with its existing repository and signing key.
+
 # SecretChat prompt for another AI coding tool
 
 Copy the text below into your coding tool, then replace the final line with your change request. Open the latest repo checkout or attach the clean source ZIP. Do not attach private credentials or signing files to a chat.
@@ -6,7 +8,7 @@ Copy the text below into your coding tool, then replace the final line with your
 
 Maintain my existing SecretChat project. Read `mobile/docs/OWNER-HANDOVER.md`, `UPDATES.md`, `README.md`, `mobile/README.md`, `mobile/docs/BACKEND.md`, `mobile/docs/ANDROID-NATIVE.md` and the latest release checks before changing it.
 
-The current release at this handover is Android 1.6.1, versionCode 8. Inspect the latest repository and published manifest before choosing the next release number. This project uses Vite/JavaScript, Capacitor 8, native Android Java, Supabase Auth/Database/Realtime/Edge Functions, and Firebase Cloud Messaging. Repository: https://github.com/psychspy7/secret.chat. Website: https://secret-chat-sable.vercel.app/.
+The current release at this handover is Android 1.6.2, versionCode 9. Inspect the latest repository and published manifest before choosing the next release number. This project uses Vite/JavaScript, Capacitor 8, native Android Java, Supabase Auth/Database/Realtime/Edge Functions, and Firebase Cloud Messaging. Repository: https://github.com/psychspy7/secret.chat. Website: https://secret-chat-sable.vercel.app/.
 
 Preserve Android application ID `com.kittycorp.sidechat`, the original signing identity, existing Supabase project `zpeadphldseifbfxpkaa`, Firebase project `kitty-sidechat-20260930`, confirmed admin `viratanand1221@gmail.com`, local encrypted storage, room rules and server authorization. Website source is `src/`; Android source is `mobile/`. Their room codes and admin sign-ins are separate.
 

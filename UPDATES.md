@@ -1,6 +1,6 @@
 # SecretChat updates
 
-Current Android release: **1.6.1 / build 8**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
+Current Android release: **1.6.2 / build 9**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
 
 For computer transfers, private backups, source locations, future AI tools and troubleshooting, read the [owner handover](mobile/docs/OWNER-HANDOVER.md). A [copyable AI handover prompt](mobile/docs/AI-HANDOVER-PROMPT.md) accompanies it.
 
@@ -15,7 +15,7 @@ The browser website and Android app currently use separate room systems. Their i
 ## Update the Android app
 
 1. Keep the same package ID, `com.kittycorp.sidechat`, and **restore the original private `.android-signing` folder**. Never upload it to GitHub or include it in the source ZIP. Keep an encrypted private backup. Changing the signing key prevents updates to existing installations.
-2. Increase `versionCode` beyond **8** and set the new `versionName` in `mobile/android/app/build.gradle`. Align `mobile/package.json`, its lockfile, and the browser-preview version in `mobile/src/main.js`.
+2. Increase `versionCode` beyond **9** and set the new `versionName` in `mobile/android/app/build.gradle`. Align `mobile/package.json`, its lockfile, and the browser-preview version in `mobile/src/main.js`.
 3. Restore your public client settings in root `.env.local` and download `mobile/android/app/google-services.json` from the Firebase project. These files are excluded from the clean source ZIP. Never use a Supabase service-role key in the app.
 4. Run these commands from the repository root in PowerShell:
 
@@ -47,10 +47,16 @@ Email sign-in uses a one-time link opened on the same device that requested it. 
 
 ## Clean source ZIP
 
-Run `./mobile/scripts/package-source.ps1 -Name SecretChat-v1.6.1-Source.zip`. The archive includes website and Android source, migrations, icon and notification assets. It excludes APK/AAB files, client configuration files, server keys, signing keys/passwords, caches, and build folders, and scans the actual archive contents for known local credentials.
+Run `./mobile/scripts/package-source.ps1 -Name SecretChat-v1.6.2-Source.zip`. The archive includes website and Android source, migrations, icon and notification assets. It excludes APK/AAB files, client configuration files, server keys, signing keys/passwords, caches, and build folders, and scans the actual archive contents for known local credentials.
 
 ## Research and shared clearing in v1.6
 
 The Android administrator opens Control → Research vault and chooses a unique password of at least 12 characters. Store it safely: this version cannot recover or rotate it. Research rooms are optional, visibly labeled, and require acceptance before joining. The admin can view/export their encrypted messages, retained until an approved manual clear. Limits are 1,000 per room and 4,096 across research rooms. At capacity, new research messages are rejected without deleting any saved message; export and approve a manual clear before continuing. Existing private rooms are never converted and have no admin archive.
 
 Room options → Ask everyone to clear chat starts a 24-hour vote among every current non-disabled member, including offline members. Any decline rejects it; a new member cancels it. Unanimous approval advances the server chat epoch. Administrators can clear any room directly. Updated clients remove local history on their next authenticated sync; exports, other copies and old apps cannot be erased. Older clients must update before sending again after a shared clear.
+
+## Routine maintenance 1.6.2
+
+The canonical source is `C:/Users/HP/Downloads/Project (Kitty-Corp)/PRIVATE CHAT ROOM (KITTY CORP)/SecretChat-Source`. Read the workspace AGENTS.md and START-HERE.md first. Latest verified project snapshots belong in `Source File Zip/secretchat/`; refresh using the workspace updater after successful checks. Read [1.6.2 verification](mobile/V1.6.2-RELEASE-CHECKS.md) for this release. Original signing material is required; native-build.ps1 no longer generates new release keys, and verify-apk.ps1 enforces the original public certificate.
+
+1.6.2 also adds Account → Share feedback / review and the matching website support link. It opens the Kitty Corp contact page with public product context only; no account details, room invitation or chat content is attached.

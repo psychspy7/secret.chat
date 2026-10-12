@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Device, native, secureStorage } from './storage.js';
+import { createActivityHandler } from './runtime.js';
 
 export const authRedirect = 'com.kittycorp.sidechat://auth/callback';
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -82,11 +83,8 @@ export async function initializeAuth(onSession, onError, onActive) {
   }
   if (native) {
     await App.addListener('appUrlOpen', ({ url: callback }) => consumeUrl(callback).catch(onError));
-    await App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) void waitForUnlock().then(() => supabase.auth.startAutoRefresh()).catch(onError);
-      else supabase.auth.stopAutoRefresh();
-      onActive(isActive);
-    });
+    const handleActivity = createActivityHandler({ unlock: waitForUnlock, start: () => supabase.auth.startAutoRefresh(), stop: () => supabase.auth.stopAutoRefresh(), onActive });
+    await App.addListener('appStateChange', event => { void handleActivity(event).catch(onError); });
     const launch = await App.getLaunchUrl();
     if (launch?.url) await consumeUrl(launch.url).catch(onError);
   }

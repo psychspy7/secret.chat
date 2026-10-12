@@ -1,6 +1,6 @@
 # SecretChat Android
 
-Current release: **1.6.1 / build 8**. See [UI release checks](V1.6.1-RELEASE-CHECKS.md).
+Current release: **1.6.2 / build 9**. See [UI release checks](V1.6.2-RELEASE-CHECKS.md).
 
 The Android app is in `mobile/`. The existing browser website remains at the repository root. They share a Supabase project but use separate room and storage systems; website invitation codes do not open mobile rooms.
 
@@ -34,7 +34,7 @@ The administrator can view account and room metadata, including the last IP addr
 5. The build creates both a signed APK and AAB in `release/`. Copy the APK to your Android phone and open it. Android may ask you to allow installation from the app used to open the file. Android 7.0 or newer is required. Keep the AAB for a Google Play upload; it cannot be installed directly on a phone.
 6. Sign in with Google. Room notifications are optional and can be enabled under your account settings.
 
-The tooling stays in the ignored `.android-tools` folder. The first build creates the release signing key in `.android-signing`. **Keep a secure backup of that folder outside GitHub. All compatible future updates require the same signing key.** Neither server credentials nor signing keys belong in the APK or source ZIP.
+The tooling stays in the ignored `.android-tools` folder. Restore the original release signing key and properties in `.android-signing` before building. The release script refuses to generate a replacement key. **Keep a secure backup of that folder outside GitHub. All compatible future updates require the same signing key.** Neither server credentials nor signing keys belong in the APK or source ZIP.
 
 See `docs/ANDROID-NATIVE.md` for native security and build details. Supabase migrations and Edge functions are under the repository-root `supabase/` directory.
 
@@ -76,3 +76,5 @@ npm.cmd --prefix mobile run build
 The browser preview supports interface and encryption checks. Native screenshot protection, Android Keystore storage, background push, and APK installation require the Android app and must be tested on an Android device.
 
 The shared research archive is capped at 4,096 messages globally and 1,000 per room; new research messages pause at capacity until an approved manual clear. Private messages are never part of that archive.
+
+Private room delivery is live while the app is active. In 1.6.2 room channels pause in the background to reduce network work; generic activity alerts still use Firebase when enabled. Messages sent while disconnected/backgrounded are not added to the device history. Existing local history and invitation keys remain intact.

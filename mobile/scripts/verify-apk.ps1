@@ -1,12 +1,15 @@
-param([string]$Apk = 'release/SecretChat-1.5.0.apk')
+param([string]$Apk = 'release/SecretChat-1.6.2.apk')
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $apkPath = [IO.Path]::GetFullPath((Join-Path $workspace $Apk))
 $env:JAVA_HOME = Join-Path $workspace '.android-tools/jdk'
 $env:PATH = "$env:JAVA_HOME/bin;$env:PATH"
 $buildTools = Join-Path $workspace '.android-tools/sdk/build-tools/36.0.0'
-& (Join-Path $buildTools 'apksigner.bat') verify --verbose --print-certs $apkPath
+$signatureOutput = & (Join-Path $buildTools 'apksigner.bat') verify --verbose --print-certs $apkPath
 if ($LASTEXITCODE -ne 0) { throw 'APK signature verification failed.' }
+$signatureOutput | Write-Output
+$originalCertificate = '8e4f4cdfcbd905336944969b6d23e8c9e15826bce322b05e03a4f5ef6b8820b0'
+if (-not (($signatureOutput -join "`n") -match ('certificate SHA-256 digest: ' + $originalCertificate))) { throw 'This APK does not retain the original SecretChat signing certificate.' }
 $metadata = & (Join-Path $buildTools 'aapt.exe') dump badging $apkPath
 if ($LASTEXITCODE -ne 0) { throw 'APK metadata could not be inspected.' }
 if (-not ($metadata -match "package: name='com.kittycorp.sidechat'")) { throw 'Unexpected Android package.' }

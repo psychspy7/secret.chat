@@ -1,5 +1,7 @@
+import { openReview } from './review.js';
 import './style.css';
 import './polish.css';
+import { createRefreshQueue, captureChatView, restoreChatComposer } from './runtime.js';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { configured, supabase, rpc, invoke, initializeAuth, signInWithGoogle, signInWithEmail } from './backend.js';
@@ -9,13 +11,13 @@ import { notificationStatus, loadNotificationSettings, enableNotifications, disa
 import { createResearchVault, unlockResearchVault, wrapResearchInvitation, unwrapResearchInvitation, exportCsv } from './research.js';
 
 const app = document.querySelector('#app');
-const state = { booting: true, session: null, profile: null, rooms: [], localRooms: {}, notices: [], screen: 'home', room: null, messages: [], online: [], connected: false, appActive: true, offline: !navigator.onLine, busy: '', modal: null, error: '', authError: '', admin: null, draft: '', version: { version: '1.6.1', versionCode: 8 }, biometric: { enabled: false, available: false }, update: null, updateStatus: '', launch: true, backendReady: false };
+const state = { booting: true, session: null, profile: null, rooms: [], localRooms: {}, notices: [], screen: 'home', room: null, messages: [], online: [], connected: false, appActive: true, offline: !navigator.onLine, busy: '', modal: null, error: '', authError: '', admin: null, draft: '', version: { version: '1.6.2', versionCode: 9 }, biometric: { enabled: false, available: false }, update: null, updateStatus: '', launch: true, backendReady: false };
 let accountGeneration = 0, authUserId = null, authLoading = false, heartbeatTimer, toastTimer, sending = false, heartbeatInFlight = false;
 const subscriptions = new Map();
 const keyCache = new Map();
 const messageQueues = new Map();
 const activityStarted = Date.now();
-let researchKey, releaseChannel, updateCheckAt = 0, updateInFlight = false;
+let researchKey, releaseChannel, updateCheckAt = 0, updateRequest = null;
 const v16 = (action, roomId = null, data = {}) => rpc('mobile_v16', {p_action:action,p_room_id:roomId,p_data:data});
 const researchNotice = 'Research room · Kitty Corp. can view and export messages for training and research. Research messages stay until an approved manual clear. Limits: 1,000 per room and 4,096 across research rooms; a full archive must be cleared before more messages can be sent. Join only if you agree; choose a private room for conversations without this access.';
 
@@ -67,6 +69,7 @@ function brand() { return `<span class="brand-mark"><img src="./secretchat-icon.
 function launchMarkup() { return `<div class="launch" role="status"><div class="launch-grid"></div><div class="launch-orbit orbit-a"></div><div class="launch-orbit orbit-b"></div><div class="launch-center"><span class="launch-mark"><img src="./secretchat-icon.jpg" width="96" height="96" alt="SecretChat" /></span><h1>SecretChat<span>.</span></h1><p>A quieter place to connect.</p><div class="launch-line"></div><span class="eyebrow">KITTY CORP. / PRIVATE COMMS</span></div><button class="launch-skip" data-action="skip-launch">Enter ${icon('arrow')}</button></div>`; }
 function footerBrand() { return `<button class="corp-link" data-action="kitty">Managed by <strong>Kitty Corp.</strong>${icon('arrow')}</button>`; }
 function render() {
+  const previousChat = captureChatView(document);
   const previousScroll = document.querySelector('.screen')?.scrollTop || 0;
   const previousForm = document.querySelector('.modal form');
   const formValues = previousForm ? [...new FormData(previousForm)] : [];
@@ -80,12 +83,16 @@ function render() {
   if (replacementForm?.id === previousFormId) for (const [name, checked] of checkboxValues) { const field = replacementForm.elements.namedItem(name); if (field) field.checked = checked; }
   const screen = document.querySelector('.screen');
   if (screen) screen.scrollTop = previousScroll;
-  if (state.screen === 'chat') renderMessages(true);
+  if (state.screen === 'chat') {
+    const sameRoom = !!previousChat && previousChat.roomId === state.room?.id;
+    renderMessages(!sameRoom || previousChat.nearBottom, sameRoom && !previousChat.nearBottom ? previousChat.scrollTop : null);
+    restoreChatComposer(previousChat, document);
+  }
   if (state.modal) setTimeout(() => document.querySelector('.modal input, .modal textarea, .modal button')?.focus(), 120);
 }
 function welcomeMarkup() {
   const pending = state.booting || authLoading;
-  return `<div class="welcome"><header class="welcome-header">${brand()}<span class="beta">V1.6.1 · BETA</span></header>
+  return `<div class="welcome"><header class="welcome-header">${brand()}<span class="beta">V1.6.2 · BETA</span></header>
     <main class="welcome-main"><div class="signal-scene" aria-hidden="true"><div class="signal-ring r1"></div><div class="signal-ring r2"></div><div class="signal-ring r3"></div><div class="signal-core"><img src="./secretchat-icon.jpg" width="72" height="72" alt="" /></div><span class="signal-dot d1"></span><span class="signal-dot d2"></span><span class="signal-label">SIGNAL ESTABLISHED</span></div>
     <span class="eyebrow mint">YOUR PEOPLE. YOUR SPACE.</span><h1>Off the noise.<br><span>On your frequency.</span></h1><p class="welcome-copy">Small rooms. Live conversation.<br>Encrypted chats that stay on your device.</p>
     <div class="trust-row"><span>${icon('lock')}Encrypted messages</span><span>${icon('settings')}Your verified account</span></div>
@@ -114,38 +121,39 @@ function roomCard(room) {
 function roomsMarkup() { return `<div class="page-intro compact"><span class="eyebrow">SAVED CONNECTIONS</span><h1>Your rooms<span>.</span></h1><p>Your memberships follow your account.<br>Invitations and messages stay on this device.</p></div><div class="paired-actions">${button('join', 'Join room', 'primary', 'hash', !state.backendReady)}${button('create', 'Create room', 'secondary', 'plus', !state.backendReady)}</div><div class="section-title"><h2>Conversations</h2><button class="text-button" data-action="refresh">Refresh</button></div><div class="room-list">${state.rooms.length ? state.rooms.map(roomCard).join('') : emptyRooms()}</div><p class="small-note">Up to four recent rooms are watched for live join and message alerts while the app is open. Background alerts require notification permission and a configured push service.</p>`; }
 function noticesMarkup() { return state.notices.length ? `<div class="section-title"><h2>From Kitty Corp.</h2><span class="eyebrow">BULLETIN</span></div><div class="notice-list">${state.notices.slice(0, 5).map(item => `<article class="notice"><span class="notice-icon">${icon('notice')}</span><div><span class="eyebrow">${esc(date(item.created_at))}</span><h3>${esc(item.title)}</h3><p>${esc(item.body)}</p></div></article>`).join('')}</div>` : ''; }
 function accountMarkup() {
-  return `<div class="page-intro compact"><span class="eyebrow">YOUR IDENTITY</span><h1>Make it yours<span>.</span></h1></div><div class="profile-card"><span class="avatar large">${esc(initial(state.profile.display_name))}</span><div><strong>${esc(state.profile.display_name)}</strong><small>${esc(state.session.user.email || 'Verified account')}</small><span class="identity-pill">${state.profile.is_admin ? 'Administrator' : 'Member'} · Email verified</span></div><button class="text-button" data-action="edit-name">Edit</button></div><section class="settings-group"><h2>Experience</h2><button class="setting" data-action="notifications"><span class="square-icon">${icon('bell')}</span><span><strong>Room activity alerts</strong><small>${notificationStatus.enabled ? 'On · SecretChat notification sound' : 'Off · tap to enable'}</small></span><span class="toggle ${notificationStatus.enabled ? 'on' : ''}" aria-hidden="true"></span></button>${notificationStatus.message ? `<p class="setting-detail">${esc(notificationStatus.message)}</p>` : ''}<button class="setting" data-action="test-sound"><span class="square-icon">${icon('radio')}</span><span><strong>Preview notification sound</strong><small>Your chosen room activity sound</small></span>${icon('arrow')}</button></section><section class="settings-group"><h2>App & device</h2><button class="setting" data-action="update"><span class="square-icon">${icon('download')}</span><span><strong>${state.busy === 'update' ? 'Checking for updates…' : 'Check for updates'}</strong><small>Version ${esc(state.version.version)} · build ${esc(state.version.versionCode)}</small></span>${icon('arrow')}</button>${state.updateStatus ? `<p class="setting-detail">${esc(state.updateStatus)}</p>` : ''}<button class="setting" data-action="privacy"><span class="square-icon">${icon('shield')}</span><span><strong>Privacy & local storage</strong><small>Understand what is stored where</small></span>${icon('arrow')}</button><button class="setting" data-action="clear-all"><span class="square-icon">${icon('trash')}</span><span><strong>Clear chats on this device</strong><small>Remove your saved message history</small></span>${icon('arrow')}</button></section><section class="settings-group"><button class="setting" data-action="support"><span class="square-icon">${icon('heart')}</span><span><strong>Support SecretChat</strong><small>Help us keep the conversation going</small></span>${icon('arrow')}</button><button class="setting" data-action="signout"><span class="square-icon">${icon('logout')}</span><span><strong>Sign out</strong><small>Encrypted history remains on this device</small></span>${icon('arrow')}</button></section>${footerBrand()}<p class="build-note">SECRETCHAT / ANDROID BETA ${esc(state.version.version)}${!native ? '<br>Browser preview · native security and updates require Android' : ''}</p>`;
+  return `<div class="page-intro compact"><span class="eyebrow">YOUR IDENTITY</span><h1>Make it yours<span>.</span></h1></div><div class="profile-card"><span class="avatar large">${esc(initial(state.profile.display_name))}</span><div><strong>${esc(state.profile.display_name)}</strong><small>${esc(state.session.user.email || 'Verified account')}</small><span class="identity-pill">${state.profile.is_admin ? 'Administrator' : 'Member'} · Email verified</span></div><button class="text-button" data-action="edit-name">Edit</button></div><section class="settings-group"><h2>Experience</h2><button class="setting" data-action="notifications"><span class="square-icon">${icon('bell')}</span><span><strong>Room activity alerts</strong><small>${notificationStatus.enabled ? 'On · SecretChat notification sound' : 'Off · tap to enable'}</small></span><span class="toggle ${notificationStatus.enabled ? 'on' : ''}" aria-hidden="true"></span></button>${notificationStatus.message ? `<p class="setting-detail">${esc(notificationStatus.message)}</p>` : ''}<button class="setting" data-action="test-sound"><span class="square-icon">${icon('radio')}</span><span><strong>Preview notification sound</strong><small>Your chosen room activity sound</small></span>${icon('arrow')}</button></section><section class="settings-group"><h2>App & device</h2><button class="setting" data-action="update"><span class="square-icon">${icon('download')}</span><span><strong>${state.busy === 'update' ? 'Checking for updates…' : 'Check for updates'}</strong><small>Version ${esc(state.version.version)} · build ${esc(state.version.versionCode)}</small></span>${icon('arrow')}</button>${state.updateStatus ? `<p class="setting-detail">${esc(state.updateStatus)}</p>` : ''}<button class="setting" data-action="privacy"><span class="square-icon">${icon('shield')}</span><span><strong>Privacy & local storage</strong><small>Understand what is stored where</small></span>${icon('arrow')}</button><button class="setting" data-action="clear-all"><span class="square-icon">${icon('trash')}</span><span><strong>Clear chats on this device</strong><small>Remove your saved message history</small></span>${icon('arrow')}</button></section><section class="settings-group"><button class="setting" data-action="review"><span class="square-icon">${icon('heart')}</span><span><strong>Share feedback / review</strong><small>Tell Kitty Corp what works and what needs improvement</small></span>${icon('arrow')}</button><button class="setting" data-action="support"><span class="square-icon">${icon('heart')}</span><span><strong>Support SecretChat</strong><small>Help us keep the conversation going</small></span>${icon('arrow')}</button><button class="setting" data-action="signout"><span class="square-icon">${icon('logout')}</span><span><strong>Sign out</strong><small>Encrypted history remains on this device</small></span>${icon('arrow')}</button></section>${footerBrand()}<p class="build-note">SECRETCHAT / ANDROID BETA ${esc(state.version.version)}${!native ? '<br>Browser preview · native security and updates require Android' : ''}</p>`;
 }
 function chatMarkup() {
   const closed = !!state.room?.closed_at;
-  return `<div class="chat-context"><span>${icon('lock')}${state.room?.research ? 'RESEARCH ROOM · ADMIN ACCESS' : 'DEVICE-STORED PRIVATE CHAT'}</span><button class="text-button" data-action="members"><span id="online-count">${state.online.length} online</span>${icon('settings')}</button></div>${state.room?.research ? `<p class="research-notice">${esc(researchNotice)}</p>` : ''}<div id="messages" class="messages" role="log" aria-label="Room messages" aria-live="polite" aria-relevant="additions"></div><div class="composer-area">${closed ? `<div class="closed-message">This room is closed. Your saved history is still on this device.</div>` : `<form id="message-form" class="composer"><textarea id="message-input" name="message" aria-label="Message" placeholder="Say something…" rows="1" maxlength="${MAX_MESSAGE_LENGTH}" enterkeyhint="send">${esc(state.draft)}</textarea><button id="message-send" class="send-button" type="submit" aria-label="Send encrypted message" ${sending || !state.connected || state.offline ? 'disabled' : ''}>${icon('send')}</button></form><div class="composer-caption">${icon('lock')}${state.room?.research ? 'Encrypted research room · admin access' : 'End-to-end encrypted · live delivery'}</div>`}</div>`;
+  return `<div class="chat-context"><span>${icon('lock')}${state.room?.research ? 'RESEARCH ROOM · ADMIN ACCESS' : 'DEVICE-STORED PRIVATE CHAT'}</span><button class="text-button" data-action="members"><span id="online-count">${state.online.length} online</span>${icon('settings')}</button></div>${state.room?.research ? `<p class="research-notice">${esc(researchNotice)}</p>` : ''}<div id="messages" data-room-id="${esc(state.room?.id)}" class="messages" role="log" aria-label="Room messages" aria-live="polite" aria-relevant="additions"></div><div class="composer-area">${closed ? `<div class="closed-message">This room is closed. Your saved history is still on this device.</div>` : `<form id="message-form" class="composer"><textarea id="message-input" name="message" aria-label="Message" placeholder="Say something…" rows="1" maxlength="${MAX_MESSAGE_LENGTH}" enterkeyhint="send">${esc(state.draft)}</textarea><button id="message-send" class="send-button" type="submit" aria-label="Send encrypted message" ${sending || !state.connected || state.offline ? 'disabled' : ''}>${icon('send')}</button></form><div class="composer-caption">${icon('lock')}${state.room?.research ? 'Encrypted research room · admin access' : 'End-to-end encrypted · live delivery'}</div>`}</div>`;
 }
-function renderMessages(forceBottom = false) {
+function renderMessages(forceBottom = false, preservedScroll = null) {
   const list = document.querySelector('#messages');
   if (!list) return;
   const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 100;
-  if (!state.messages.length) list.innerHTML = `<div class="chat-empty"><span>${icon('radio')}</span><h2>You're on the same frequency.</h2><p>Messages arrive live and are saved on this device. Messages sent while you are offline are not available later.</p><span class="chat-empty-chip">A NEW CONVERSATION STARTS HERE</span></div>`;
+  if (!state.messages.length) list.innerHTML = `<div class="chat-empty"><span>${icon('radio')}</span><h2>You're on the same frequency.</h2><p>Messages arrive live while this app is open and are saved on this device. Messages sent while offline or in the background are not added to this device’s history.</p><span class="chat-empty-chip">A NEW CONVERSATION STARTS HERE</span></div>`;
   else {
     let lastDate = '';
     const desired = [];
     const existing = new Map([...list.children].map(node => [node.dataset.key, node]));
     const obtain = (key, html) => {
       let node = existing.get(key);
-      if (!node) { const template = document.createElement('template'); template.innerHTML = html; node = template.content.firstElementChild; node.dataset.key = key; }
+      if (!node) { const template = document.createElement('template'); template.innerHTML = html(); node = template.content.firstElementChild; node.dataset.key = key; }
       desired.push(node);
     };
     for (const message of state.messages) {
-      const day = date(message.created_at), dayKey = new Date(message.created_at).toLocaleDateString();
-      if (dayKey !== lastDate) obtain(`day:${dayKey}`, `<div class="date-divider"><span>${esc(day)}</span></div>`);
+      const dayKey = new Date(message.created_at).toDateString();
+      if (dayKey !== lastDate) obtain(`day:${dayKey}`, () => `<div class="date-divider"><span>${esc(date(message.created_at))}</span></div>`);
       lastDate = dayKey;
       const self = message.user_id === userId();
-      obtain(`message:${message.id}`, `<article class="message ${self ? 'self' : ''}"><div class="message-meta"><strong>${message.is_creator ? `Host (${esc(message.display_name)})` : esc(message.display_name)}</strong>${self ? '<span>YOU</span>' : ''}</div><div class="message-bubble"><p>${esc(message.text)}</p><span class="message-time">${esc(time(message.created_at))}${self ? icon('check') : ''}</span></div></article>`);
+      obtain(`message:${message.id}`, () => `<article class="message ${self ? 'self' : ''}"><div class="message-meta"><strong>${message.is_creator ? `Host (${esc(message.display_name)})` : esc(message.display_name)}</strong>${self ? '<span>YOU</span>' : ''}</div><div class="message-bubble"><p>${esc(message.text)}</p><span class="message-time">${esc(time(message.created_at))}${self ? icon('check') : ''}</span></div></article>`);
     }
     const retained = new Set(desired);
     for (const child of [...list.children]) if (!retained.has(child)) child.remove();
     desired.forEach((node, index) => { if (list.children[index] !== node) list.insertBefore(node, list.children[index] || null); });
   }
-  if (forceBottom || nearBottom) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+  if (preservedScroll !== null) list.scrollTop = preservedScroll;
+  else if (forceBottom || nearBottom) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
 }
 function connectionLabel() {
   const target = document.querySelector('#connection-label');
@@ -290,15 +298,22 @@ function queueMessage(envelope, roomId, account, generation) {
   messageQueues.set(roomId, task);
   task.catch(() => { if (generation === accountGeneration && state.room?.id === roomId) toast('A message could not be verified and was not displayed.'); }).finally(() => { if (messageQueues.get(roomId) === task) messageQueues.delete(roomId); });
 }
-async function syncSubscriptions() {
+const syncSubscriptions = createRefreshQueue(async () => {
   if (!supabase || !userId()) return;
   const account = userId(), generation = accountGeneration;
-  const eligible = state.rooms.filter(room => !room.closed_at && state.localRooms[room.id]?.code);
+  const canSubscribe = state.appActive && !state.offline && state.backendReady;
+  const eligible = canSubscribe ? state.rooms.filter(room => !room.closed_at && state.localRooms[room.id]?.code) : [];
+  if (!canSubscribe && releaseChannel) { const channel = releaseChannel; releaseChannel = null; await supabase.removeChannel(channel); }
   eligible.sort((a, b) => (state.localRooms[b.id]?.last_opened || 0) - (state.localRooms[a.id]?.last_opened || 0));
   const selected = new Map();
-  if (state.room && !state.room.closed_at) selected.set(state.room.id, state.room);
+  if (canSubscribe && state.room && !state.room.closed_at) selected.set(state.room.id, state.room);
   for (const room of eligible) { if (selected.size >= 4) break; if (room.watched !== false) selected.set(room.id, room); }
   for (const [roomId, entry] of subscriptions) if (!selected.has(roomId)) { subscriptions.delete(roomId); await supabase.removeChannel(entry.channel); }
+  if (generation !== accountGeneration || account !== userId()) return;
+  if (canSubscribe && (!state.appActive || state.offline)) return;
+  if (canSubscribe && !releaseChannel) {
+    releaseChannel = supabase.channel('mobile-updates', {config:{private:true}}).on('broadcast',{event:'update'},()=> { if (generation === accountGeneration && state.appActive) { updateCheckAt = 0; void checkUpdate(true).catch(()=>{}); } }).subscribe();
+  }
   for (const [roomId, room] of selected) {
     if (subscriptions.has(roomId)) continue;
     const channel = supabase.channel(`mobile-room:${roomId}`, { config: { private: true, broadcast: { self: false } } });
@@ -330,7 +345,7 @@ async function syncSubscriptions() {
     });
   }
   if (state.room) { state.connected = subscriptions.get(state.room.id)?.ready === true; connectionLabel(); }
-}
+});
 async function heartbeat() {
   const room = state.room, generation = accountGeneration;
   if (!room || room.closed_at || !state.appActive || state.offline || !state.connected || heartbeatInFlight) return;
@@ -468,25 +483,27 @@ async function onSession(session) {
     }
     await loadNotificationSettings(account, id => { const room = state.rooms.find(item => item.id === id); if (room) void run('open-room', () => enterRoom(room)); }, open => { updateCheckAt=0; void checkUpdate(!open).catch(()=>{}); }).catch(error => { notificationStatus.message = friendly(error); });
     state.authError = ''; state.screen = 'home';
-    if (releaseChannel) await supabase.removeChannel(releaseChannel);
-    releaseChannel=supabase.channel('mobile-updates',{config:{private:true}}).on('broadcast',{event:'update'},()=> { if (generation===accountGeneration) { updateCheckAt=0; void checkUpdate(true).catch(()=>{}); } }).subscribe();
+    await syncSubscriptions();
     updateCheckAt=0; void checkUpdate(true).catch(()=>{});
   } catch (error) { state.authError = friendly(error); state.profile = null; }
   finally { if (generation === accountGeneration) { authLoading = false; state.booting = false; render(); } }
 }
 async function checkUpdate(automatic = false) {
-  if (updateInFlight || !userId() || (automatic && Date.now()-updateCheckAt<60000)) return;
-  updateInFlight=true; updateCheckAt=Date.now();
+  const generation = accountGeneration, account = userId();
+  if (updateRequest?.generation === generation || !account || state.offline || (automatic && Date.now()-updateCheckAt<60000)) return;
+  const request = { generation, account };
+  updateRequest = request; updateCheckAt = Date.now();
   try {
   state.updateStatus = '';
   const release = await rpc('mobile_latest_release');
+  if (updateRequest !== request || generation !== accountGeneration || account !== userId()) return;
   if (!release) { state.updateStatus = 'No Android release has been published to the update service yet.'; return; }
   if (release.version_code <= Number(state.version.versionCode)) { state.updateStatus = `You are up to date · ${state.version.version}`; return; }
   state.update = release;
   if (!native) { state.updateStatus = 'An update is available. APK installation works inside the Android app.'; return; }
   if (!/^https:\/\//i.test(release.apk_url) || !/^[a-f0-9]{64}$/i.test(release.sha256)) throw new Error('This update is missing valid download verification details.');
   if (automatic) { await announceUpdate(release,userId()); render(); } else openModal('update');
-  } finally { updateInFlight=false; }
+  } finally { if (updateRequest === request) updateRequest = null; }
 }
 async function copy(text, label) {
   try { await navigator.clipboard.writeText(text); toast(label); }
@@ -504,6 +521,7 @@ async function dispatch(action, element) {
     state.biometric = await Device.setBiometricLock({ enabled: !state.biometric.enabled });
     toast(state.biometric.enabled ? 'Fingerprint lock enabled. Your device PIN can also unlock the app.' : 'Fingerprint lock disabled.');
   });
+  if (action === 'review') return run(action, () => openReview(options => Browser.open(options)));
   if (action === 'kitty') return Browser.open({ url: 'https://kittycorp.vercel.app' });
   if (['create', 'join', 'privacy', 'support', 'edit-name', 'members', 'room-options', 'request-extension'].includes(action)) { openModal(action); return; }
   if (['new-notice', 'new-release'].includes(action) && state.profile?.is_admin === true) { openModal(action); return; }
@@ -608,16 +626,33 @@ app.addEventListener('keydown', event => {
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   }
 });
-window.addEventListener('online', () => { state.offline = false; connectionLabel(); if (userId()) void refreshRooms().then(() => { render(); return heartbeat(); }).catch(error => toast(friendly(error))); else render(); });
-window.addEventListener('offline', () => { state.offline = true; render(); });
+const refreshConnection = createRefreshQueue(async () => {
+  const generation = accountGeneration, account = userId();
+  if (!account || !state.appActive || state.offline || authLoading) return;
+  if (!state.backendReady) {
+    const profile = await rpc('mobile_profile', { p_display_name: null });
+    if (generation !== accountGeneration || account !== userId() || !state.appActive) return;
+    await supabase.realtime.setAuth(state.session.access_token);
+    if (generation !== accountGeneration || account !== userId() || !state.appActive) return;
+    state.profile = profile;
+    await localData.write(account, 'profile', { ...profile, is_admin: false });
+  }
+  await refreshRooms();
+  if (generation !== accountGeneration || account !== userId() || !state.appActive) return;
+  render(); await heartbeat();
+  void checkUpdate(true).catch(()=>{});
+});
+window.addEventListener('online', () => { state.offline = false; connectionLabel(); if (userId()) void refreshConnection().catch(error => toast(friendly(error))); else render(); });
+window.addEventListener('offline', () => { state.offline = true; render(); void syncSubscriptions().catch(()=>{}); });
 function setActive(active) {
+  if (active === state.appActive) return;
   state.appActive = active;
   if (!active) { researchKey=null; }
   document.body.classList.toggle('app-inactive', !active);
-  if (active) { if (state.room) void heartbeat(); if (userId()) { void refreshRooms().catch(()=>{}); void checkUpdate(true).catch(()=>{}); } }
-  else { researchKey=null; if (state.modal?.type==='research-chat') { state.modal=null; render(); } if (state.room && !state.room.closed_at) void rpc('mobile_leave_room', { p_room_id: state.room.id }).catch(() => {}); }
+  if (active) { if (userId()) void refreshConnection().catch(error => toast(friendly(error))); }
+  else { void syncSubscriptions().catch(()=>{}); researchKey=null; if (state.modal?.type==='research-chat') { state.modal=null; render(); } if (state.room && !state.room.closed_at) void rpc('mobile_leave_room', { p_room_id: state.room.id }).catch(() => {}); }
 }
-document.addEventListener('visibilitychange', () => setActive(!document.hidden));
+if (!native) document.addEventListener('visibilitychange', () => setActive(!document.hidden));
 window.visualViewport?.addEventListener('resize', () => { document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport.height}px`); });
 async function bootstrap() {
   render();

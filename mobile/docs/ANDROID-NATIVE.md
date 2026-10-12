@@ -1,6 +1,6 @@
 # Android build and release
 
-The app identifier is `com.kittycorp.sidechat`. The current release is version `1.6.1`, code `8`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK. See the [owner handover](OWNER-HANDOVER.md) before moving computers or preparing an update.
+The app identifier is `com.kittycorp.sidechat`. The current release is version `1.6.2`, code `9`, with Android 7.0 (API 24) as its minimum and API 36 as its target. Node 22 or later is required. The checked-in native project uses Capacitor 8 and a workspace-local JDK 21 and Android SDK. See the [owner handover](OWNER-HANDOVER.md) before moving computers or preparing an update.
 
 From the repository root in PowerShell:
 
@@ -12,7 +12,7 @@ npm.cmd --prefix mobile ci
 
 Configure the repository root `.env.local` using `.env.example` before building; the mobile Vite configuration reads its environment from that parent directory. The build script compiles the web client, generates the original notification chirp, synchronizes Capacitor, builds and signs both releases, runs the native unit tests, verifies both signatures, and copies the results to `release/SecretChat-<versionName>.apk` and `release/SecretChat-<versionName>.aab`. Install the APK directly on a phone. The AAB is for upload to Google Play; it cannot be installed directly.
 
-The first build creates `.android-signing/sidechat-release.p12` and its private password file. **Back up `.android-signing` securely.** Never commit it, include it in a source ZIP, or regenerate it for an update to an existing install. Losing this key prevents compatible updates to this APK. The build script does not print the password. If you move the project to another folder or computer, update only the `storeFile` path in the private `keystore.properties` file to point to the same restored key; retain the original passwords and alias.
+Restore the original `.android-signing/sidechat-release.p12` and its private password file before building; the release script does not create replacement signing material. **Back up `.android-signing` securely.** Never commit it, include it in a source ZIP, or regenerate it for an update to an existing install. Losing this key prevents compatible updates to this APK. The build script does not print the password. If you move the project to another folder or computer, update only the `storeFile` path in the private `keystore.properties` file to point to the same restored key; retain the original passwords and alias.
 
 ## Local data protection
 

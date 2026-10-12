@@ -1,6 +1,6 @@
 # SecretChat owner handover
 
-Prepared 3 October 2026. Current Android release: **1.6.1 / build 8**.
+Prepared 11 October 2026. Current Android release: **1.6.2 / build 9**.
 
 Use this guide when maintaining the project yourself, moving computers, or handing it to another developer or AI coding tool. Start from the current repository, preserve the existing accounts and signing identity, and release changes in the order below.
 
@@ -8,14 +8,14 @@ Use this guide when maintaining the project yourself, moving computers, or handi
 
 | File | Purpose |
 | --- | --- |
-| `release/SecretChat-1.6.1.apk` | Signed Android installation and update file. |
-| `release/SecretChat-1.6.1.aab` | Signed bundle for Google Play Console, subject to Play setup and review. It is not a directly installable APK. |
-| `release/SecretChat-v1.6.1-Source.zip` | Clean website, Android, backend, tests, artwork and documentation snapshot. Configuration and private credentials are excluded. |
+| `release/SecretChat-1.6.2.apk` | Signed Android installation and update file. |
+| `release/SecretChat-1.6.2.aab` | Signed bundle for Google Play Console, subject to Play setup and review. It is not a directly installable APK. |
+| `release/SecretChat-v1.6.2-Source.zip` | Clean website, Android, backend, tests, artwork and documentation snapshot. Configuration and private credentials are excluded. |
 | `mobile/docs/OWNER-HANDOVER.md` | This maintenance guide. |
 | `mobile/docs/AI-HANDOVER-PROMPT.md` | Instructions you can give another AI coding tool. |
 | `UPDATES.md` | Short release procedure. |
-| `mobile/V1.6.1-RELEASE-CHECKS.md` | Evidence and remaining device checks for this release. |
-| `release/SecretChat-1.6.1-SHA256.txt` | Checksums for the final APK, AAB and source ZIP. Generated separately, not inside the ZIP. |
+| `mobile/V1.6.2-RELEASE-CHECKS.md` | Evidence and remaining device checks for this release. |
+| `release/SecretChat-1.6.2-SHA256.txt` | Checksums for the final APK, AAB and source ZIP. Generated separately, not inside the ZIP. |
 
 The source ZIP is a code snapshot, not a backup of your live database, user chats, signing identity, or dashboard settings. For ongoing development, clone the GitHub repository so you retain its history and can push changes.
 
@@ -40,7 +40,7 @@ The website and Android app currently have separate room systems. Their codes, m
 
 Back up the following separately in encrypted storage that you control. These are deliberately absent from GitHub and the source ZIP:
 
-- **`.android-signing/sidechat-release.p12` and `.android-signing/keystore.properties`**: the original key, passwords and alias. Preserve both together. The existing build script creates a new key if all signing files are missing, so restore these files before running a release build.
+- **`.android-signing/sidechat-release.p12` and `.android-signing/keystore.properties`**: the original key, passwords and alias. Preserve both together. The release build refuses to proceed without the original signing files. Restore these files before building.
 - Root `.env.local`, and any local production environment file. They contain the client connection settings; recreate from `.env.example` if necessary.
 - `mobile/android/app/google-services.json`: the Firebase Android client configuration. It can be downloaded again from the existing Firebase project for the existing application ID. Its project identifiers are not private server credentials, but this project excludes the file from the clean archive.
 - `.mobile-secrets/`, if you retain the existing server setup credentials locally. The Firebase sender private key must remain server-only. The deployed copy is in the Supabase Edge Function secret named `FCM_SERVICE_ACCOUNT_JSON`.
@@ -64,8 +64,8 @@ Use Windows, PowerShell 7 or newer, Git, and Node.js 22 or newer. The build scri
 For example, in PowerShell:
 
 ```powershell
-git clone https://github.com/psychspy7/secret.chat.git "$env:USERPROFILE\Downloads\SecretChat"
-Set-Location "$env:USERPROFILE\Downloads\SecretChat"
+git clone https://github.com/psychspy7/secret.chat.git "$env:USERPROFILE\Downloads\Project (Kitty-Corp)\PRIVATE CHAT ROOM (KITTY CORP)\SecretChat-Source"
+Set-Location "$env:USERPROFILE\Downloads\Project (Kitty-Corp)\PRIVATE CHAT ROOM (KITTY CORP)\SecretChat-Source"
 git switch -c codex/my-update
 npm.cmd ci
 npm.cmd --prefix mobile ci
@@ -145,9 +145,9 @@ You can use GitHub Desktop to select changes, commit, push and open/merge a pull
 
 ## 8. Build the next Android release
 
-For the next release, an example is **1.6.2 / build 9**. Inspect the current published build first and choose a number greater than it; 9 is appropriate only while 8 remains the latest.
+For the next release, an example is **1.6.3 / build 10**. Inspect the current published build first and choose a number greater than it; 10 is appropriate only while 9 remains the latest.
 
-1. In `mobile/android/app/build.gradle`, set `versionName "1.6.2"` and `versionCode 9`. Keep `applicationId "com.kittycorp.sidechat"`.
+1. In `mobile/android/app/build.gradle`, set `versionName "1.6.3"` and `versionCode 10`. Keep `applicationId "com.kittycorp.sidechat"`.
 2. Align the version in `mobile/package.json`, `mobile/package-lock.json`, the fallback version/build and beta label in `mobile/src/main.js`, and release documentation. Do not change package IDs to match the new display name.
 3. Confirm the original `.android-signing` files, root `.env.local` and Firebase `google-services.json` are present. If the original signing material is missing, restore it before continuing. A newly generated signing key cannot update the existing APK installation.
 4. From the repository root:
@@ -155,7 +155,7 @@ For the next release, an example is **1.6.2 / build 9**. Inspect the current pub
 ```powershell
 ./mobile/scripts/native-setup.ps1
 ./mobile/scripts/native-build.ps1
-./mobile/scripts/verify-apk.ps1 -Apk release/SecretChat-1.6.2.apk
+./mobile/scripts/verify-apk.ps1 -Apk release/SecretChat-1.6.3.apk
 ```
 
 The setup step is needed on a new machine. The build compiles the mobile client, prepares audio, syncs Capacitor, builds APK/AAB, runs native unit tests, verifies signatures and copies the files into `release/`. The verifier checks the APK's label, application ID, release mode and private-credential patterns. Compare the certificate fingerprint to the original fingerprint above; the script's signature validity check alone does not establish that it is the original key.
@@ -170,14 +170,14 @@ Increasing `versionCode` distinguishes each release to Android and to this app's
 1. Copy the verified APK to a new immutable path, for example:
 
 ```powershell
-Copy-Item -LiteralPath release/SecretChat-1.6.2.apk -Destination public/downloads/SecretChat-1.6.2-build9.apk
-Get-FileHash -Algorithm SHA256 -LiteralPath public/downloads/SecretChat-1.6.2-build9.apk
-git add -f public/downloads/SecretChat-1.6.2-build9.apk
+Copy-Item -LiteralPath release/SecretChat-1.6.3.apk -Destination public/downloads/SecretChat-1.6.3-build10.apk
+Get-FileHash -Algorithm SHA256 -LiteralPath public/downloads/SecretChat-1.6.3-build10.apk
+git add -f public/downloads/SecretChat-1.6.3-build10.apk
 ```
 
 Force-add only that intended public APK because APKs are normally ignored. Stage the intended source changes separately. Preserve earlier download files and URLs; replacing a published binary breaks its recorded hash. Update the website's download link to the new filename, commit and deploy through `main`.
 
-2. Wait for Vercel Ready. Download the new public URL and confirm it returns an APK directly over HTTPS without redirects, login pages or HTML fallback. Verify the downloaded file's SHA-256 matches the local APK. An example URL is `https://secret-chat-sable.vercel.app/downloads/SecretChat-1.6.2-build9.apk`.
+2. Wait for Vercel Ready. Download the new public URL and confirm it returns an APK directly over HTTPS without redirects, login pages or HTML fallback. Verify the downloaded file's SHA-256 matches the local APK. An example URL is `https://secret-chat-sable.vercel.app/downloads/SecretChat-1.6.3-build10.apk`.
 3. Sign in as `viratanand1221@gmail.com`, open **Control → Android releases → Publish**, and provide the version, increasing build number, exact direct URL, exact SHA-256 and release notes. Do this only after the file is reachable.
 4. The release service stores the manifest and queues generic update notifications for registered devices. The current app checks on open/resume, while active, and through **Account → Check for updates**. Users choose Install and confirm Android's permission/installation prompts. Notification beeps depend on notification permissions, channel sound, battery settings and connectivity; FCM acceptance is not proof that every phone sounded.
 
@@ -232,9 +232,13 @@ A website rollback/revert can restore a previous frontend. It does not undo data
 After finishing source/docs updates, run from a Git checkout:
 
 ```powershell
-./mobile/scripts/package-source.ps1 -Name SecretChat-v1.6.2-Source.zip
+./mobile/scripts/package-source.ps1 -Name SecretChat-v1.6.3-Source.zip
 ```
 
 Use the actual release version. The packager allowlists source and scans the finished ZIP for private key patterns and known local credentials. It excludes signing/server keys, environment/configuration files, APK/AABs, caches, build folders and local helper files. Give another AI or developer the clean source ZIP or repo plus the handover prompt; share release binaries separately. Private backups stay under your control.
 
-For 1.6.1, automated web/mobile/Edge checks, APK/AAB builds, signing checks, source scans and native update-policy tests passed. Local browser layouts were visually reviewed. Real-phone native login, keyboard, fingerprint, screenshot, notification and update installation checks remain necessary before a wider rollout. See `mobile/V1.6.1-RELEASE-CHECKS.md` for the precise evidence.
+For 1.6.2, the exact automated checks, build/signature results and release delivery are recorded in the release checks. Isolated DOM tests cover scroll/caret and incremental message rendering; these are not real-device performance measurements. Real-phone native login, keyboard, fingerprint, screenshot, notification and update installation checks remain necessary before a wider rollout. See `mobile/V1.6.2-RELEASE-CHECKS.md` for the precise evidence.
+
+Private room delivery is live while the app is active. In 1.6.2 room channels pause in the background to reduce network work; generic activity alerts still use Firebase when enabled. Messages sent while disconnected/backgrounded are not added to the device history. Existing local history and invitation keys remain intact.
+
+Use the canonical Kitty Corp workspace and read its AGENTS.md and START-HERE.md before changes. Do not recreate this project in older OneDrive folders.
