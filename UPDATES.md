@@ -1,6 +1,6 @@
 # SecretChat updates
 
-Current Android release: **2.0.0 / build 10**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
+Current Android release: **2.0.0 / build 11**. Website: [SecretChat](https://secret-chat-sable.vercel.app). Repository: [psychspy7/secret.chat](https://github.com/psychspy7/secret.chat).
 
 For computer transfers, private backups, source locations, future AI tools and troubleshooting, read the [owner handover](mobile/docs/OWNER-HANDOVER.md). A [copyable AI handover prompt](mobile/docs/AI-HANDOVER-PROMPT.md) accompanies it.
 

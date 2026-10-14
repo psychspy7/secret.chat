@@ -1,6 +1,6 @@
 # Prompt for the next SecretChat developer or AI
 
-You are maintaining SecretChat V2.0.0 / Android build 10, managed by Kitty Corp. Read README.md, mobile/README.md, mobile/docs/OWNER-HANDOVER.md, mobile/V2.0-RELEASE-CHECKS.md and existing AGENTS/START-HERE instructions before editing. My new request is appended below; do useful authorized work, verify it, and report actual results and limits.
+You are maintaining SecretChat V2.0.0 / Android build 11, managed by Kitty Corp. Read README.md, mobile/README.md, mobile/docs/OWNER-HANDOVER.md, mobile/V2.0-RELEASE-CHECKS.md and existing AGENTS/START-HERE instructions before editing. My new request is appended below; do useful authorized work, verify it, and report actual results and limits.
 
 Canonical owner checkout: C:/Users/HP/Downloads/Project (Kitty-Corp)/PRIVATE CHAT ROOM (KITTY CORP)/SecretChat-Source. Repository: https://github.com/psychspy7/secret.chat. Production: https://secret-chat-sable.vercel.app/. Preserve this repository/history, original source/assets, private configuration and user data. Do not recreate the backend, initialize a replacement repo, edit synced sources/, use old OneDrive/project mirrors, or merge another Kitty project's Git history. An extracted ZIP is a clean snapshot; clone the existing repo for history, then overlay Source/ if using SOURCE-LATEST.zip.
 

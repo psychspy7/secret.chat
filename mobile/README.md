@@ -1,6 +1,6 @@
 # SecretChat V2 — Android and website
 
-Current release: **2.0.0 / build 10**. See [V2 release checks](V2.0-RELEASE-CHECKS.md).
+Current release: **2.0.0 / build 11**. See [V2 release checks](V2.0-RELEASE-CHECKS.md).
 
 The shared account-based client is in `mobile/` and serves Android and the production website root. Memberships use the same Supabase backend; history and invitations remain encrypted separately on each device/browser. Legacy anonymous browser rooms remain in root `src/` at `/legacy` and their old routes. Their original invitations still work in that legacy system.
 

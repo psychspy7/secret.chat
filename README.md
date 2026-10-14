@@ -1,6 +1,6 @@
 # SecretChat V2.0 · Managed by Kitty Corp.
 
-SecretChat 2.0.0 / Android build 10 provides the same account-based room interface on Android and at https://secret-chat-sable.vercel.app/. Google and confirmed email accounts share memberships; invitations, encrypted drafts and received-message history remain local to each device or browser. No private transcript is sent to KITTY AI.
+SecretChat 2.0.0 / Android build 11 provides the same account-based room interface on Android and at https://secret-chat-sable.vercel.app/. Google and confirmed email accounts share memberships; invitations, encrypted drafts and received-message history remain local to each device or browser. No private transcript is sent to KITTY AI.
 
 V2 adds a calm navy/ivory/mint interface, dark/light/device appearance, reduced-motion and optional native touch feedback, join-first home, pinned rooms, local room/message search, unread counts, private invitation sharing, and sectioned/paged admin controls. KITTY AI opens the installed app where available, otherwise its verified company launch page. Reviews open Kitty Corp with public product context only.
 

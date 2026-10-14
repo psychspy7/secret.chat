@@ -5,6 +5,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +19,7 @@ jobs:
       - run: npm run build
   mobile:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: mobile
@@ -29,6 +31,6 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
-      - run: npm run check
+      - run: node --test --test-timeout=30000 tests/*.test.mjs
       - run: npm run build
       - run: node --test ../tests/mobile-backend-edge.test.mjs

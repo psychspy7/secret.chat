@@ -58,7 +58,7 @@ export function serialized(key, operation) {
   const task = previous.catch(() => {}).then(() => {
     if (!native && typeof navigator !== 'undefined' && typeof navigator.locks?.request === 'function') {
       // Hold the shared record lock through decrypt, modify, encrypt and commit.
-      return navigator.locks.request(`sidechat-mobile-preview:vault:${key}`, () => operation());
+      return navigator.locks.request(`sidechat-mobile-preview:vault:${key}`, async () => operation());
     }
     return operation();
   });

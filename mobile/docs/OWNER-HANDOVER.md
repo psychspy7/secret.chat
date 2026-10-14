@@ -1,6 +1,6 @@
 # SecretChat V2 owner handover
 
-Prepared 14 October 2026. Release identity: **2.0.0 / Android build 10**. Read the final `mobile/V2.0-RELEASE-CHECKS.md` for actual verification and remaining device checks.
+Prepared 14 October 2026. Release identity: **2.0.0 / Android build 11**. Read the final `mobile/V2.0-RELEASE-CHECKS.md` for actual verification and remaining device checks.
 
 ## Keep these deliverables
 
@@ -74,7 +74,7 @@ Important source map: mobile/src/main.js (shared UI/actions), v2.css (V2 present
 
 ## Future release order
 
-1. Inspect main and the live Supabase mobile_releases maximum version_code. Choose a strictly larger build; after this release the next candidate is 11 only if 10 remains latest. Example display/package version 2.0.1. Align mobile/package.json+lockfile, build.gradle versionName/versionCode, main.js fallback/beta label, docs and versioned download links. Keep the package ID and original key.
+1. Inspect main and the live Supabase mobile_releases maximum version_code. Choose a strictly larger build; after this release the next candidate is 12 only if 11 remains latest. Example display/package version 2.0.1. Align mobile/package.json+lockfile, build.gradle versionName/versionCode, main.js fallback/beta label, docs and versioned download links. Keep the package ID and original key.
 2. Run relevant checks, dependency audit and responsive QA. Backend changes need reviewed new migrations/Edge deployment separately; Vercel does not deploy them. Never reset/reseed live data or rewrite applied migration history.
 3. Restore original private signing/Firebase settings. On a new machine run native-setup.ps1. Then:
 

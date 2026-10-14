@@ -1,6 +1,6 @@
 # V2 review and data-preservation record
 
-Release work: SecretChat 2.0.0 / Android build 10. Baseline: 4e8ed373e4c17ae9e72cb1df29dd98932deceab9. Plan: V2-RELEASE-PLAN.md.
+Release work: SecretChat 2.0.0 / Android build 11. Baseline: 4e8ed373e4c17ae9e72cb1df29dd98932deceab9. Plan: V2-RELEASE-PLAN.md.
 
 Code review: skipped (ce-code-review unavailable)
 
@@ -20,3 +20,5 @@ The ce-work unavailable-review path therefore requires an explicit manual diff s
 Manual final scan must confirm that every changed backend-bound action preserves verified identity/role checks, modern private/research boundaries, manual research retention, legacy invitation/admin behavior, original Android signing identity and secret exclusions. No live chat cleanup, research deletion, backend reset or new credential is part of this release.
 
 Actual Android chooser cancellation/biometric return, real upgrade/auth/capture roles, notification receipt/sound and public SMTP delivery remain acceptance checks on real devices/accounts. Node VM/LockManager fixtures and signed release builds do not establish those outcomes.
+
+Runtime follow-up: actual Node24.21.0 reproduced a synchronous Web Locks failure/retry deadlock (15 of 16 focused checks passed; one timed out). Normalizing the callback to async preserves browser behavior and lets the real LockManager release after rejection. All 16 focused and 102 complete Node24 checks then passed. Final Android build11 preserves the earlier candidate10 path and permits a compatible forward update.
