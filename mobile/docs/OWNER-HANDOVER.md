@@ -97,3 +97,5 @@ Public email one-time links need a custom SMTP sender in the EXISTING Supabase p
 History and invitation recovery are intentionally local; uninstall, app/browser data clearing, device loss or key loss may erase them. A website cannot block OS captures. Native notification delivery/sound depends on Android permission, channel, battery and network settings. Keep the research-vault password safe: this version has no recovery/rotation flow.
 
 Post-deploy owner validation: immediately and for the first 24 hours, check sign-in/room join/send, private-vs-research boundaries, old invitation/host routes, Vercel/CI errors and release-outbox pending/failed counts without reading private transcripts. Roll back a website commit if unintended login/route/data regression appears; for Android, fix forward with a higher build and the same key. Never delete chats or lower the manifest build to simulate a rollback.
+
+Publication and final update evidence: read V2-DELIVERY.md alongside the release-checks file. Final verified code is2e70d11; version2.0.0/build11 is the published compatible Android update.
