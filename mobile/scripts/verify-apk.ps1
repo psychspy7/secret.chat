@@ -1,4 +1,4 @@
-param([string]$Apk = 'release/SecretChat-1.6.2.apk')
+param([string]$Apk = 'release/SecretChat-2.0.0.apk')
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $apkPath = [IO.Path]::GetFullPath((Join-Path $workspace $Apk))

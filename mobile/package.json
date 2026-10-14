@@ -1,6 +1,6 @@
 {
   "name": "sidechat-android",
-  "version": "1.6.2",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
+    "fake-indexeddb": "6.2.5",
     "vite": "8.2.2"
   },
   "overrides": {

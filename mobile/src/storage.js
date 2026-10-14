@@ -26,11 +26,16 @@ async function browserDatabase() {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    let key = await transact(db, 'readonly', store => store.get('__key'));
-    if (!key) {
-      key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-      await transact(db, 'readwrite', store => store.put(key, '__key'));
-    }
+    // Generate outside the transaction so WebCrypto cannot make it inactive.
+    // The readwrite transaction chooses one stored key for every same-origin tab.
+    const candidate = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const key = await transact(db, 'readwrite', store => {
+      const request = store.get('__key');
+      request.addEventListener('success', () => {
+        if (!request.result) store.put(candidate, '__key');
+      });
+      return request;
+    }) || candidate;
     return { db, key };
   })();
   return databasePromise;
@@ -50,7 +55,13 @@ async function writeRaw(key, value) {
 }
 export function serialized(key, operation) {
   const previous = locks.get(key) || Promise.resolve();
-  const task = previous.catch(() => {}).then(operation);
+  const task = previous.catch(() => {}).then(() => {
+    if (!native && typeof navigator !== 'undefined' && typeof navigator.locks?.request === 'function') {
+      // Hold the shared record lock through decrypt, modify, encrypt and commit.
+      return navigator.locks.request(`sidechat-mobile-preview:vault:${key}`, () => operation());
+    }
+    return operation();
+  });
   locks.set(key, task);
   task.finally(() => { if (locks.get(key) === task) locks.delete(key); }).catch(() => {});
   return task;

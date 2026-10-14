@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "build": "node mobile/scripts/build-website.mjs",
+    "preview": "node mobile/scripts/preview-website.mjs",
     "check": "node --check src/main.js && node --check src/crypto.js && node tests/crypto-test.mjs",
     "check:integration": "node tests/supabase-integration.mjs",
-    "provision:host-keypair": "node tests/provision-host-keypair.mjs"
+    "provision:host-keypair": "node tests/provision-host-keypair.mjs",
+    "setup:workspace": "npm ci && npm --prefix mobile ci",
+    "check:all": "npm run check && npm --prefix mobile run check && node --test tests/mobile-backend-edge.test.mjs && node --test tests/website-routing.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.116.0"

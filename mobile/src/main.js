@@ -1,6 +1,8 @@
 import { openReview } from './review.js';
 import './style.css';
 import './polish.css';
+import './v2.css';
+import { normalizePreferences, normalizeRoomTools, selectRooms, searchHistory, createDraftStore } from './organizer.js';
 import { createRefreshQueue, captureChatView, restoreChatComposer } from './runtime.js';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
@@ -11,17 +13,62 @@ import { notificationStatus, loadNotificationSettings, enableNotifications, disa
 import { createResearchVault, unlockResearchVault, wrapResearchInvitation, unwrapResearchInvitation, exportCsv } from './research.js';
 
 const app = document.querySelector('#app');
-const state = { booting: true, session: null, profile: null, rooms: [], localRooms: {}, notices: [], screen: 'home', room: null, messages: [], online: [], connected: false, appActive: true, offline: !navigator.onLine, busy: '', modal: null, error: '', authError: '', admin: null, draft: '', version: { version: '1.6.2', versionCode: 9 }, biometric: { enabled: false, available: false }, update: null, updateStatus: '', launch: true, backendReady: false };
+const state = { booting: true, session: null, profile: null, rooms: [], localRooms: {}, notices: [], screen: 'home', room: null, messages: [], online: [], connected: false, appActive: true, offline: !navigator.onLine, busy: '', modal: null, error: '', authError: '', admin: null, draft: '', version: { version: '2.0.0', versionCode: 10 }, biometric: { enabled: false, available: false }, update: null, updateStatus: '', launch: true, backendReady: false, preferences: normalizePreferences(), roomTools: normalizeRoomTools(), roomQuery: '', roomFilter: 'all', chatQuery: '', adminTab: 'rooms', adminPage: 0 };
 let accountGeneration = 0, authUserId = null, authLoading = false, heartbeatTimer, toastTimer, sending = false, heartbeatInFlight = false;
+let latestRequestedSession = null, sessionRevision = 0;
+const sessionCleanups = [];
 const subscriptions = new Map();
 const keyCache = new Map();
 const messageQueues = new Map();
 const activityStarted = Date.now();
+const draftStore = createDraftStore({ read: (...args) => localData.read(...args), write: (...args) => localData.write(...args), onError: () => { if (userId() && state.appActive) toast('Your draft could not be saved. Keep this app open and retry when storage is available.'); } });
+const systemTheme = window.matchMedia('(prefers-color-scheme: light)');
+function applyAppearance() {
+  const light = state.preferences.theme === 'light' || (state.preferences.theme === 'system' && systemTheme.matches);
+  document.body.dataset.theme = light ? 'light' : 'dark';
+  document.body.dataset.motion = state.preferences.motion ? 'full' : 'reduced';
+  if (native) void Device.setAppearance({ light }).catch(() => {});
+}
+systemTheme.addEventListener('change', applyAppearance);
+async function savePreferences(patch) {
+  const account = userId(), generation = accountGeneration;
+  const prefs = await localData.update(account, 'appearance', {}, old => normalizePreferences({ ...old, ...patch }));
+  if (account === userId() && generation === accountGeneration) { state.preferences = prefs; applyAppearance(); render(); }
+}
+async function persistRoomTools(update, account = userId(), generation = accountGeneration) {
+  if (!account || account !== userId() || generation !== accountGeneration) return;
+  const tools = await localData.update(account, 'room-tools', {}, old => {
+    if (account !== userId() || generation !== accountGeneration) return old;
+    return normalizeRoomTools(update(normalizeRoomTools(old)));
+  });
+  if (account === userId() && generation === accountGeneration) { state.roomTools = tools; renderRoomList(); renderRecentRooms(); }
+}
+async function markRoomRead(id, account = userId(), generation = accountGeneration) {
+  await persistRoomTools(old => ({ ...old, unread: { ...old.unread, [id]: 0 } }), account, generation);
+}
+function filteredRooms() { return selectRooms(state.rooms, { ...state.roomTools, query: state.roomQuery, filter: state.roomFilter }); }
+function filteredRoomListMarkup() { return filteredRooms().map(roomCard).join('') || '<div class="empty-card"><strong>No rooms found.</strong><p>Try another name or choose All.</p></div>'; }
+function renderRoomList() {
+  const list = document.querySelector('#room-list');
+  if (list) list.innerHTML = filteredRoomListMarkup();
+  const count = document.querySelector('#room-count'); if (count) count.textContent = `${filteredRooms().length} ${filteredRooms().length === 1 ? 'conversation' : 'conversations'}`;
+}
+function renderRecentRooms() {
+  const recent = document.querySelector('#home-room-list');
+  if (recent) recent.innerHTML = selectRooms(state.rooms, state.roomTools).slice(0, 3).map(roomCard).join('') || emptyRooms();
+}
+function searchResultsMarkup() {
+  const matches = searchHistory(state.messages, state.chatQuery).reverse();
+  return `<p class="small-note" role="status">${matches.length} ${matches.length === 1 ? 'message' : 'messages'} on this device</p><div class="search-results">${matches.map(m => `<button class="search-result" data-action="jump-message" data-id="${esc(m.id)}"><span><strong>${esc(m.display_name)}</strong><small>${esc(date(m.created_at))} · ${esc(time(m.created_at))}</small></span><p>${esc(m.text)}</p></button>`).join('') || '<p class="empty-inline">No saved messages match. Search only includes history on this device.</p>'}</div>`;
+}
+function ecosystemMarkup() { return `<div class="section-title"><h2>From the same family</h2><span class="eyebrow">KITTY CORP.</span></div><div class="ecosystem-grid"><button data-action="kitty-ai">${icon('spark')}<strong>KITTY AI</strong><small>Open your AI companion. Your chat stays here.</small></button><button data-action="review">${icon('heart')}<strong>Share your thoughts</strong><small>Send a SecretChat review to Kitty Corp.</small></button></div>`; }
+
 let researchKey, releaseChannel, updateCheckAt = 0, updateRequest = null;
 const v16 = (action, roomId = null, data = {}) => rpc('mobile_v16', {p_action:action,p_room_id:roomId,p_data:data});
 const researchNotice = 'Research room · Kitty Corp. can view and export messages for training and research. Research messages stay until an approved manual clear. Limits: 1,000 per room and 4,096 across research rooms; a full archive must be cleared before more messages can be sent. Join only if you agree; choose a private room for conversations without this access.';
 
 const paths = {
+  search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>', pin: '<path d="m9 3 9 9-4 1-3 4-4-4 4-3-1-4Z M8 16l-5 5"/>', sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1"/>', moon: '<path d="M20 15A9 9 0 0 1 9 4 9 9 0 1 0 20 15Z"/>', spark: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/>', share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m9 10 6-4M9 14l6 4"/>',
   shield: '<path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', back: '<path d="M19 12H5m6-6-6 6 6 6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', hash: '<path d="m9 3-2 18M17 3l-2 18M4 9h16M3 15h16"/>',
@@ -76,8 +123,7 @@ function render() {
   const checkboxValues = previousForm ? [...previousForm.querySelectorAll('input[type="checkbox"]')].map(field => [field.name, field.checked]) : [];
   const previousFormId = previousForm?.id;
   app.innerHTML = `${state.session && state.profile ? shellMarkup() : welcomeMarkup()}${state.modal ? modalMarkup() : ''}${state.launch ? launchMarkup() : ''}`;
-  if (state.screen === 'admin' && state.profile?.is_admin === true && state.admin) document.querySelector('.screen')?.insertAdjacentHTML('beforeend', `${adminLifetimeMarkup()}${releaseAdminMarkup()}`);
-  if (state.screen === 'account' && state.profile) document.querySelector('.settings-group')?.insertAdjacentHTML('beforeend', `<button class="setting" data-action="fingerprint"><span class="square-icon">${icon('lock')}</span><span><strong>Fingerprint app lock</strong><small>${native ? state.biometric.enabled ? 'On · locks when you leave the app' : state.biometric.available ? 'Off · tap to enable' : 'Enrol a strong biometric in Android Settings' : 'Available in the Android app'}</small></span><span class="toggle ${state.biometric.enabled ? 'on' : ''}" aria-hidden="true"></span></button>${state.profile.is_admin ? '<p class="setting-detail">Your verified administrator session may capture screenshots while the app is unlocked. The app switcher remains protected.</p>' : ''}`);
+  if (state.screen === 'account' && state.profile) document.querySelector('.settings-group')?.insertAdjacentHTML('beforeend', `<button class="setting" data-action="fingerprint"><span class="square-icon">${icon('lock')}</span><span><strong>Fingerprint app lock</strong><small>${native ? state.biometric.enabled ? 'On · locks when you leave the app' : state.biometric.available ? 'Off · tap to enable' : 'Enrol a strong biometric in Android Settings' : 'Available in the Android app'}</small></span><span class="toggle ${state.biometric.enabled ? 'on' : ''}" aria-hidden="true"></span></button>${native && state.profile.is_admin ? '<p class="setting-detail">Your verified administrator session may capture screenshots while the app is unlocked. The app switcher remains protected.</p>' : ''}`);
   const replacementForm = document.querySelector('.modal form');
   if (replacementForm?.id === previousFormId) for (const [name, value] of formValues) { const field = replacementForm.elements.namedItem(name); if (field) field.value = value; }
   if (replacementForm?.id === previousFormId) for (const [name, checked] of checkboxValues) { const field = replacementForm.elements.namedItem(name); if (field) field.checked = checked; }
@@ -88,21 +134,21 @@ function render() {
     renderMessages(!sameRoom || previousChat.nearBottom, sameRoom && !previousChat.nearBottom ? previousChat.scrollTop : null);
     restoreChatComposer(previousChat, document);
   }
-  if (state.modal) setTimeout(() => document.querySelector('.modal input, .modal textarea, .modal button')?.focus(), 120);
+  if (state.modal) setTimeout(() => (document.querySelector('.modal input, .modal textarea') || document.querySelector('.modal button'))?.focus(), 120);
 }
 function welcomeMarkup() {
   const pending = state.booting || authLoading;
-  return `<div class="welcome"><header class="welcome-header">${brand()}<span class="beta">V1.6.2 · BETA</span></header>
-    <main class="welcome-main"><div class="signal-scene" aria-hidden="true"><div class="signal-ring r1"></div><div class="signal-ring r2"></div><div class="signal-ring r3"></div><div class="signal-core"><img src="./secretchat-icon.jpg" width="72" height="72" alt="" /></div><span class="signal-dot d1"></span><span class="signal-dot d2"></span><span class="signal-label">SIGNAL ESTABLISHED</span></div>
+  return `<div class="welcome"><header class="welcome-header">${brand()}<span class="beta">V2.0 · BETA</span></header>
+    <main class="welcome-main"><div class="signal-scene welcome-art" aria-hidden="true"><div class="signal-ring r1"></div><div class="signal-ring r2"></div><div class="signal-ring r3"></div><div class="signal-core"><img src="./secretchat-icon.jpg" width="72" height="72" alt="" /></div><span class="signal-dot d1"></span><span class="signal-dot d2"></span><span class="signal-label">SIGNAL ESTABLISHED</span></div>
     <span class="eyebrow mint">YOUR PEOPLE. YOUR SPACE.</span><h1>Off the noise.<br><span>On your frequency.</span></h1><p class="welcome-copy">Small rooms. Live conversation.<br>Encrypted chats that stay on your device.</p>
     <div class="trust-row"><span>${icon('lock')}Encrypted messages</span><span>${icon('settings')}Your verified account</span></div>
     ${!configured ? '<div class="error-card"><strong>Connection setup required</strong><p>The app owner needs to finish this build’s backend connection.</p></div>' : `<button class="google-button" data-action="google" ${pending || state.busy ? 'disabled' : ''}>${pending ? loading('Connecting securely') : `${googleMark}<span>Continue with Google</span>${icon('arrow')}`}</button><button class="button secondary full email-button" data-action="email" ${pending || state.busy ? 'disabled' : ''}>Continue with email ${icon('arrow')}</button>`}
-    ${state.authError ? `<p class="inline-error" role="alert">${esc(state.authError)}</p>` : ''}<p class="welcome-fine">Your account keeps your identity and room membership. Chat history stays on this device and is not restored by signing in.</p><button class="text-button" data-action="privacy">How your privacy works ${icon('arrow')}</button></main>
+    ${state.authError ? `<p class="inline-error" role="alert">${esc(state.authError)}</p>` : ''}<p class="welcome-fine">One account for the app and website. Room membership follows you; encrypted history and invitations stay on each device.</p><button class="text-button" data-action="privacy">How your privacy works ${icon('arrow')}</button>${!native ? '<a class="button secondary full" href="/downloads/SecretChat-2.0.0-build10.apk">Get the Android app</a><a class="text-button legacy-link" href="/legacy">Have an older browser invitation?</a>' : ''}</main>
     <footer>${footerBrand()}${!native ? '<span class="preview-label">Browser preview · Android features require the APK</span>' : ''}</footer></div>`;
 }
 function shellMarkup() {
   const chat = state.screen === 'chat';
-  return `<div class="app-shell ${chat ? 'chat-shell' : ''}"><header class="topbar">${chat ? `<button class="icon-button" aria-label="Leave conversation view" data-action="back">${icon('back')}</button><div class="chat-heading"><strong>${esc(state.room?.label || 'Room')}</strong><span id="connection-label">${state.connected ? '<i class="status-dot"></i>Encrypted live channel' : 'Connecting to room…'}</span></div><button class="icon-button" aria-label="Room options" data-action="room-options">${icon('more')}</button>` : `<div class="brand">${brand()}</div><button class="avatar" data-action="account" aria-label="Your account">${esc(initial(state.profile.display_name))}</button>`}</header>${state.update ? `<button class="update-banner" data-action="update">${icon('download')}SecretChat ${esc(state.update.version)} is ready · Install ${icon('arrow')}</button>` : ''}${state.offline ? `<div class="offline-banner">${icon('wifi')}You are offline. Saved chats are still available.</div>` : ''}${state.error ? `<div class="error-banner" role="alert">${esc(state.error)}<button data-action="dismiss-error" aria-label="Dismiss">×</button></div>` : ''}<main class="screen ${chat ? 'chat-screen' : ''}">${state.screen === 'home' ? homeMarkup() : state.screen === 'rooms' ? roomsMarkup() : state.screen === 'account' ? accountMarkup() : state.screen === 'admin' ? adminMarkup() : chatMarkup()}</main>${!chat ? navMarkup() : ''}</div>`;
+  return `<div class="app-shell ${chat ? 'chat-shell' : ''}"><header class="topbar">${chat ? `<button class="icon-button" aria-label="Leave conversation view" data-action="back">${icon('back')}</button><div class="chat-heading"><strong>${esc(state.room?.label || 'Room')}</strong><span id="connection-label">${state.connected ? '<i class="status-dot"></i>Encrypted live channel' : 'Connecting to room…'}</span></div><button class="icon-button" aria-label="Search saved messages" data-action="search-chat">${icon('search')}</button><button class="icon-button" aria-label="Room options" data-action="room-options">${icon('more')}</button>` : `<div class="brand">${brand()}</div><button class="avatar" data-action="account" aria-label="Your account">${esc(initial(state.profile.display_name))}</button>`}</header>${state.update ? `<button class="update-banner" data-action="update">${icon('download')}SecretChat ${esc(state.update.version)} is ready · Install ${icon('arrow')}</button>` : ''}${state.offline ? `<div class="offline-banner">${icon('wifi')}You are offline. Saved chats are still available.</div>` : ''}${state.error ? `<div class="error-banner" role="alert">${esc(state.error)}<button data-action="dismiss-error" aria-label="Dismiss">×</button></div>` : ''}<main class="screen ${chat ? 'chat-screen' : ''}">${state.screen === 'home' ? homeMarkup() : state.screen === 'rooms' ? roomsMarkup() : state.screen === 'account' ? accountMarkup() : state.screen === 'admin' ? adminMarkup() : chatMarkup()}</main>${!chat ? navMarkup() : ''}</div>`;
 }
 function navMarkup() {
   const items = [['home', 'Home', 'home'], ['rooms', 'Rooms', 'rooms'], ['account', 'You', 'settings']];
@@ -111,21 +157,24 @@ function navMarkup() {
 }
 function homeMarkup() {
   const count = state.rooms.filter(room => !room.closed_at).length;
-  return `<div class="page-intro"><span class="eyebrow">YOUR PRIVATE FREQUENCY</span><h1>Hey, <span>${esc((state.profile.display_name || 'friend').split(' ')[0])}.</span></h1><p>A little space for the people who matter.</p></div><section class="hero-card"><div class="hero-content"><span class="chip"><i class="status-dot"></i>INVITATION ONLY</span><h2>Meet in your<br>own space.</h2><p>Have an invitation?<br>Your people are one code away.</p>${button('join', 'Join room', 'primary full', 'arrow', !state.backendReady)}</div><div class="hero-art" aria-hidden="true"><div class="hero-circle"></div><img src="./secretchat-icon.jpg" width="56" height="56" alt="" /></div><span class="hero-index">SC / 01</span></section><button class="join-card" data-action="create" ${!state.backendReady ? 'disabled' : ''}><span class="square-icon">${icon('plus')}</span><span><strong>Create a room</strong><small>Make space for a new conversation</small></span>${icon('arrow')}</button><div class="section-title"><h2>Recent rooms <span>${count.toString().padStart(2, '0')}</span></h2><button class="text-button" data-action="rooms">View all ${icon('arrow')}</button></div>${state.rooms.length ? `<div class="room-list">${state.rooms.slice(0, 3).map(roomCard).join('')}</div>` : emptyRooms()}${noticesMarkup()}<div class="quiet-note">${icon('lock')}Your messages are encrypted before they leave your device.</div>${footerBrand()}`;
+  const recent = selectRooms(state.rooms, state.roomTools).slice(0, 3);
+  return `<div class="page-intro hero-greeting"><span class="eyebrow">YOUR PRIVATE FREQUENCY / V2.0</span><h1>Hey, <span>${esc((state.profile.display_name || 'friend').split(' ')[0])}.</span></h1><p>Good conversations start with a smaller circle.</p></div><section class="hero-card v2-hero"><div class="hero-content"><span class="chip"><i class="status-dot"></i>YOUR PEOPLE. YOUR SPACE.</span><h2>A room away<br>from the noise.</h2><p>Got an invitation? Come on in.</p>${button('join', 'Join a room', 'primary full primary-room-action', 'arrow', !state.backendReady)}</div><div class="hero-art" aria-hidden="true"><div class="hero-circle"></div><img src="./secretchat-icon.jpg" width="56" height="56" alt="" /></div><span class="hero-index">SC / V2.0</span></section><button class="join-card" data-action="create" ${!state.backendReady ? 'disabled' : ''}><span class="square-icon">${icon('plus')}</span><span><strong>Create a room</strong><small>A new space, for 1–24 hours</small></span>${icon('arrow')}</button><div class="section-title"><h2>Your conversations <span>${count.toString().padStart(2, '0')}</span></h2><button class="text-button" data-action="rooms">View all ${icon('arrow')}</button></div><div id="home-room-list" class="room-list">${recent.length ? recent.map(roomCard).join('') : emptyRooms()}</div>${noticesMarkup()}${ecosystemMarkup()}<div class="quiet-note">${icon('lock')}Private messages are encrypted before they leave this device.</div>${footerBrand()}`;
 }
 function emptyRooms() { return `<div class="empty-card"><span class="empty-icon">${icon('rooms')}</span><strong>A place for your people.</strong><p>Join with an invitation, or create a room to get started.</p></div>`; }
 function roomCard(room) {
-  const remembered = state.localRooms[room.id];
-  return `<button class="room-card ${room.closed_at ? 'closed' : ''}" data-action="open-room" data-id="${esc(room.id)}"><span class="room-avatar">${icon(room.closed_at || !remembered?.code ? 'lock' : 'hash')}</span><span class="room-info"><strong>${esc(room.label)}</strong><small>${room.closed_at ? 'Room closed · local history remains' : !remembered?.code ? 'Invitation needed on this device' : `${room.is_creator ? 'Created by you' : 'Joined room'} · ${room.member_count ?? 1} members`}</small>${!room.closed_at ? `<small>${esc(expiryLabel(room))}</small>` : ''}</span><span class="room-end">${room.online_count > 0 && !room.closed_at ? `<span class="room-online"><i class="status-dot"></i>${room.online_count}</span>` : ''}${icon('arrow')}</span></button>`;
+  const remembered = state.localRooms[room.id], pinned = state.roomTools.pinned.includes(room.id), unread = state.roomTools.unread[room.id] || 0;
+  return `<div class="conversation-row"><button class="room-card ${room.closed_at ? 'closed' : ''}" data-action="open-room" data-id="${esc(room.id)}"><span class="room-avatar">${icon(room.closed_at || !remembered?.code ? 'lock' : 'hash')}</span><span class="room-info"><strong>${esc(room.label)} ${pinned ? '<span class="pinned-badge">Pinned</span>' : ''}</strong><small>${room.closed_at ? 'Closed · your history remains' : !remembered?.code ? 'Invitation needed on this device' : `${room.is_creator ? 'Created by you' : 'Joined room'} · ${room.member_count ?? 1} members`}</small>${!room.closed_at ? `<small>${esc(expiryLabel(room))}</small>` : ''}</span><span class="room-end">${unread ? `<span class="unread-badge" aria-label="${unread} new local messages">${unread === 99 ? '99+' : unread}</span>` : ''}${room.online_count > 0 && !room.closed_at ? `<span class="room-online"><i class="status-dot"></i>${room.online_count}</span>` : ''}</span></button><button class="room-pin-button" data-action="pin-room" data-id="${esc(room.id)}" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(room.label)}" aria-pressed="${pinned}">${icon('pin')}</button></div>`;
 }
-function roomsMarkup() { return `<div class="page-intro compact"><span class="eyebrow">SAVED CONNECTIONS</span><h1>Your rooms<span>.</span></h1><p>Your memberships follow your account.<br>Invitations and messages stay on this device.</p></div><div class="paired-actions">${button('join', 'Join room', 'primary', 'hash', !state.backendReady)}${button('create', 'Create room', 'secondary', 'plus', !state.backendReady)}</div><div class="section-title"><h2>Conversations</h2><button class="text-button" data-action="refresh">Refresh</button></div><div class="room-list">${state.rooms.length ? state.rooms.map(roomCard).join('') : emptyRooms()}</div><p class="small-note">Up to four recent rooms are watched for live join and message alerts while the app is open. Background alerts require notification permission and a configured push service.</p>`; }
+function roomsMarkup() {
+  return `<div class="page-intro compact"><span class="eyebrow">YOUR CONNECTIONS</span><h1>Conversations<span>.</span></h1><p>Your memberships follow your account.<br>Your invitations and history stay here.</p></div><div class="paired-actions">${button('join', 'Join room', 'primary', 'hash', !state.backendReady)}${button('create', 'Create room', 'secondary', 'plus', !state.backendReady)}</div><label class="toolbar-search">${icon('search')}<input id="room-search" type="search" value="${esc(state.roomQuery)}" maxlength="60" placeholder="Find a room" aria-label="Find a room by name" /></label><div class="filter-chips" role="group" aria-label="Filter rooms">${[['all','All'],['unread','Unread'],['pinned','Pinned'],['closed','Closed']].map(([filter,label]) => `<button data-action="room-filter" data-filter="${filter}" aria-pressed="${state.roomFilter === filter}">${label}</button>`).join('')}</div><div class="section-title"><h2 id="room-count">${filteredRooms().length} ${filteredRooms().length === 1 ? 'conversation' : 'conversations'}</h2><button class="text-button" data-action="refresh">Refresh</button></div><div id="room-list" class="room-list">${state.rooms.length ? filteredRoomListMarkup() : emptyRooms()}</div><p class="small-note">Pin up to 12 rooms. Unread counts reflect messages received on this device. Up to four recent rooms are watched for live alerts; Android background alerts need notification permission.</p>`;
+}
 function noticesMarkup() { return state.notices.length ? `<div class="section-title"><h2>From Kitty Corp.</h2><span class="eyebrow">BULLETIN</span></div><div class="notice-list">${state.notices.slice(0, 5).map(item => `<article class="notice"><span class="notice-icon">${icon('notice')}</span><div><span class="eyebrow">${esc(date(item.created_at))}</span><h3>${esc(item.title)}</h3><p>${esc(item.body)}</p></div></article>`).join('')}</div>` : ''; }
 function accountMarkup() {
-  return `<div class="page-intro compact"><span class="eyebrow">YOUR IDENTITY</span><h1>Make it yours<span>.</span></h1></div><div class="profile-card"><span class="avatar large">${esc(initial(state.profile.display_name))}</span><div><strong>${esc(state.profile.display_name)}</strong><small>${esc(state.session.user.email || 'Verified account')}</small><span class="identity-pill">${state.profile.is_admin ? 'Administrator' : 'Member'} · Email verified</span></div><button class="text-button" data-action="edit-name">Edit</button></div><section class="settings-group"><h2>Experience</h2><button class="setting" data-action="notifications"><span class="square-icon">${icon('bell')}</span><span><strong>Room activity alerts</strong><small>${notificationStatus.enabled ? 'On · SecretChat notification sound' : 'Off · tap to enable'}</small></span><span class="toggle ${notificationStatus.enabled ? 'on' : ''}" aria-hidden="true"></span></button>${notificationStatus.message ? `<p class="setting-detail">${esc(notificationStatus.message)}</p>` : ''}<button class="setting" data-action="test-sound"><span class="square-icon">${icon('radio')}</span><span><strong>Preview notification sound</strong><small>Your chosen room activity sound</small></span>${icon('arrow')}</button></section><section class="settings-group"><h2>App & device</h2><button class="setting" data-action="update"><span class="square-icon">${icon('download')}</span><span><strong>${state.busy === 'update' ? 'Checking for updates…' : 'Check for updates'}</strong><small>Version ${esc(state.version.version)} · build ${esc(state.version.versionCode)}</small></span>${icon('arrow')}</button>${state.updateStatus ? `<p class="setting-detail">${esc(state.updateStatus)}</p>` : ''}<button class="setting" data-action="privacy"><span class="square-icon">${icon('shield')}</span><span><strong>Privacy & local storage</strong><small>Understand what is stored where</small></span>${icon('arrow')}</button><button class="setting" data-action="clear-all"><span class="square-icon">${icon('trash')}</span><span><strong>Clear chats on this device</strong><small>Remove your saved message history</small></span>${icon('arrow')}</button></section><section class="settings-group"><button class="setting" data-action="review"><span class="square-icon">${icon('heart')}</span><span><strong>Share feedback / review</strong><small>Tell Kitty Corp what works and what needs improvement</small></span>${icon('arrow')}</button><button class="setting" data-action="support"><span class="square-icon">${icon('heart')}</span><span><strong>Support SecretChat</strong><small>Help us keep the conversation going</small></span>${icon('arrow')}</button><button class="setting" data-action="signout"><span class="square-icon">${icon('logout')}</span><span><strong>Sign out</strong><small>Encrypted history remains on this device</small></span>${icon('arrow')}</button></section>${footerBrand()}<p class="build-note">SECRETCHAT / ANDROID BETA ${esc(state.version.version)}${!native ? '<br>Browser preview · native security and updates require Android' : ''}</p>`;
+  return `<div class="page-intro compact"><span class="eyebrow">YOUR IDENTITY</span><h1>Make it yours<span>.</span></h1></div><div class="profile-card"><span class="avatar large">${esc(initial(state.profile.display_name))}</span><div><strong>${esc(state.profile.display_name)}</strong><small>${esc(state.session.user.email || 'Verified account')}</small><span class="identity-pill">${state.profile.is_admin ? 'Administrator' : 'Member'} · Email verified</span></div><button class="text-button" data-action="edit-name">Edit</button></div><section class="settings-group"><h2>Experience</h2><button class="setting" data-action="notifications"><span class="square-icon">${icon('bell')}</span><span><strong>Room activity alerts</strong><small>${notificationStatus.enabled ? 'On · SecretChat notification sound' : 'Off · tap to enable'}</small></span><span class="toggle ${notificationStatus.enabled ? 'on' : ''}" aria-hidden="true"></span></button>${notificationStatus.message ? `<p class="setting-detail">${esc(notificationStatus.message)}</p>` : ''}<button class="setting" data-action="test-sound"><span class="square-icon">${icon('radio')}</span><span><strong>Preview notification sound</strong><small>Your chosen room activity sound</small></span>${icon('arrow')}</button></section><section class="settings-group"><h2>Make it yours</h2><div class="appearance-options" role="group" aria-label="Appearance">${[['dark','Dark','moon'],['light','Light','sun'],['system','Device','settings']].map(([theme,label,glyph]) => `<button data-action="set-theme" data-theme="${theme}" aria-pressed="${state.preferences.theme === theme}">${icon(glyph)}${label}</button>`).join('')}</div><button class="setting" data-action="toggle-motion" aria-pressed="${state.preferences.motion}"><span class="square-icon">${icon('spark')}</span><span><strong>Gentle animations</strong><small>${state.preferences.motion ? 'On · respects device reduced motion' : 'Off · quieter transitions'}</small></span><span class="toggle ${state.preferences.motion ? 'on' : ''}" aria-hidden="true"></span></button>${native ? `<button class="setting" data-action="toggle-haptics" aria-pressed="${state.preferences.haptics}"><span class="square-icon">${icon('radio')}</span><span><strong>Touch feedback</strong><small>Subtle feedback for navigation</small></span><span class="toggle ${state.preferences.haptics ? 'on' : ''}" aria-hidden="true"></span></button>` : ''}</section><section class="settings-group"><h2>App & device</h2><button class="setting" data-action="update"><span class="square-icon">${icon('download')}</span><span><strong>${state.busy === 'update' ? 'Checking for updates…' : 'Check for updates'}</strong><small>Version ${esc(state.version.version)} · build ${esc(state.version.versionCode)}</small></span>${icon('arrow')}</button>${state.updateStatus ? `<p class="setting-detail">${esc(state.updateStatus)}</p>` : ''}<button class="setting" data-action="privacy"><span class="square-icon">${icon('shield')}</span><span><strong>Privacy & local storage</strong><small>Understand what is stored where</small></span>${icon('arrow')}</button><button class="setting" data-action="clear-all"><span class="square-icon">${icon('trash')}</span><span><strong>Clear chats on this device</strong><small>Remove saved history and unsent drafts</small></span>${icon('arrow')}</button></section><section class="settings-group"><button class="setting" data-action="review"><span class="square-icon">${icon('heart')}</span><span><strong>Share feedback / review</strong><small>Tell Kitty Corp what works and what needs improvement</small></span>${icon('arrow')}</button><button class="setting" data-action="support"><span class="square-icon">${icon('heart')}</span><span><strong>Support SecretChat</strong><small>Help us keep the conversation going</small></span>${icon('arrow')}</button><button class="setting" data-action="signout"><span class="square-icon">${icon('logout')}</span><span><strong>Sign out</strong><small>Encrypted history remains on this device</small></span>${icon('arrow')}</button></section>${ecosystemMarkup()}${!native ? '<a class="button secondary full" href="/downloads/SecretChat-2.0.0-build10.apk">Get the Android app</a><a class="text-button legacy-link" href="/legacy">Older browser rooms</a>' : ''}${footerBrand()}<p class="build-note">SECRETCHAT / V2.0 BETA ${esc(state.version.version)}${!native ? '<br>Website · fingerprint, protected capture and APK updates require Android' : ''}</p>`;
 }
 function chatMarkup() {
   const closed = !!state.room?.closed_at;
-  return `<div class="chat-context"><span>${icon('lock')}${state.room?.research ? 'RESEARCH ROOM · ADMIN ACCESS' : 'DEVICE-STORED PRIVATE CHAT'}</span><button class="text-button" data-action="members"><span id="online-count">${state.online.length} online</span>${icon('settings')}</button></div>${state.room?.research ? `<p class="research-notice">${esc(researchNotice)}</p>` : ''}<div id="messages" data-room-id="${esc(state.room?.id)}" class="messages" role="log" aria-label="Room messages" aria-live="polite" aria-relevant="additions"></div><div class="composer-area">${closed ? `<div class="closed-message">This room is closed. Your saved history is still on this device.</div>` : `<form id="message-form" class="composer"><textarea id="message-input" name="message" aria-label="Message" placeholder="Say something…" rows="1" maxlength="${MAX_MESSAGE_LENGTH}" enterkeyhint="send">${esc(state.draft)}</textarea><button id="message-send" class="send-button" type="submit" aria-label="Send encrypted message" ${sending || !state.connected || state.offline ? 'disabled' : ''}>${icon('send')}</button></form><div class="composer-caption">${icon('lock')}${state.room?.research ? 'Encrypted research room · admin access' : 'End-to-end encrypted · live delivery'}</div>`}</div>`;
+  return `<div class="chat-context"><span>${icon('lock')}${state.room?.research ? 'RESEARCH ROOM · ADMIN ACCESS' : 'DEVICE-STORED PRIVATE CHAT'}</span><button class="text-button" data-action="members"><span id="online-count">${state.online.length} online</span>${icon('settings')}</button></div>${state.room?.research ? `<p class="research-notice">${esc(researchNotice)}</p>` : ''}<div id="messages" data-room-id="${esc(state.room?.id)}" class="messages" role="log" aria-label="Room messages" aria-live="polite" aria-relevant="additions"></div><div class="composer-area">${closed ? `<div class="closed-message">This room is closed. Your saved history is still on this device.</div>` : `<form id="message-form" class="composer"><textarea id="message-input" data-account="${esc(userId())}" data-room-id="${esc(state.room?.id)}" data-generation="${accountGeneration}" name="message" aria-label="Message" placeholder="Say something…" rows="1" maxlength="${MAX_MESSAGE_LENGTH}" enterkeyhint="send">${esc(state.draft)}</textarea><button id="message-send" class="send-button" type="submit" aria-label="Send encrypted message" ${sending || !state.connected || state.offline ? 'disabled' : ''}>${icon('send')}</button></form><div class="composer-caption">${icon('lock')}${state.room?.research ? 'Encrypted research room · admin access' : 'End-to-end encrypted · live delivery'}</div>`}</div>`;
 }
 function renderMessages(forceBottom = false, preservedScroll = null) {
   const list = document.querySelector('#messages');
@@ -146,7 +195,7 @@ function renderMessages(forceBottom = false, preservedScroll = null) {
       if (dayKey !== lastDate) obtain(`day:${dayKey}`, () => `<div class="date-divider"><span>${esc(date(message.created_at))}</span></div>`);
       lastDate = dayKey;
       const self = message.user_id === userId();
-      obtain(`message:${message.id}`, () => `<article class="message ${self ? 'self' : ''}"><div class="message-meta"><strong>${message.is_creator ? `Host (${esc(message.display_name)})` : esc(message.display_name)}</strong>${self ? '<span>YOU</span>' : ''}</div><div class="message-bubble"><p>${esc(message.text)}</p><span class="message-time">${esc(time(message.created_at))}${self ? icon('check') : ''}</span></div></article>`);
+      obtain(`message:${message.id}`, () => `<article class="message ${self ? 'self' : ''}"><div class="message-meta"><strong>${message.is_creator ? `Host (${esc(message.display_name)})` : esc(message.display_name)}</strong>${self ? '<span>YOU</span>' : ''}</div><div class="message-bubble"><p>${esc(message.text)}</p><span class="message-time">${esc(time(message.created_at))}${self ? icon('check') : ''}</span></div><div class="message-tools"><button class="message-action" data-action="copy-message" data-id="${esc(message.id)}" aria-label="Copy message">${icon('copy')}</button></div></article>`);
     }
     const retained = new Set(desired);
     for (const child of [...list.children]) if (!retained.has(child)) child.remove();
@@ -170,24 +219,32 @@ function adminMarkup() {
   if (state.profile?.is_admin !== true) return '';
   const overview = state.admin;
   if (!overview) return `<div class="page-intro"><span class="eyebrow">KITTY CORP. / CONTROL</span><h1>Control room<span>.</span></h1><p>Loading administrator tools…</p></div>`;
-  const requests = overview.deletion_requests.filter(item => item.status === 'pending');
-  return `<div class="page-intro compact"><span class="eyebrow">KITTY CORP. / ADMINISTRATOR</span><h1>Control room<span>.</span></h1><p>Manage rooms, members, and announcements.</p></div><div class="admin-stats"><div><strong>${overview.profiles.length}</strong><span>Members</span></div><div><strong>${overview.rooms.filter(room => !room.closed_at).length}</strong><span>Open rooms</span></div><div><strong>${requests.length}</strong><span>Requests</span></div></div><div class="section-title"><h2>Deletion requests</h2><button class="text-button" data-action="refresh-admin">Refresh</button></div>${requests.length ? requests.map(item => `<article class="admin-card"><strong>${esc(item.room_label)}</strong><p>${esc(item.display_name)} requested room deletion.</p><div class="paired-actions"><button class="button danger" data-action="approve-delete" data-id="${esc(item.id)}" ${state.busy ? 'disabled' : ''}>Approve</button><button class="button secondary" data-action="reject-delete" data-id="${esc(item.id)}" ${state.busy ? 'disabled' : ''}>Decline</button></div></article>`).join('') : '<p class="empty-inline">No pending requests.</p>'}<div class="section-title"><h2>Notices</h2><button class="text-button" data-action="new-notice">Publish ${icon('plus')}</button></div>${overview.notices.map(item => `<article class="admin-card"><strong>${esc(item.title)}</strong><p>${esc(item.body)}</p><button class="text-button danger-text" data-action="remove-notice" data-id="${esc(item.id)}">Remove notice</button></article>`).join('') || '<p class="empty-inline">No notices published.</p>'}${researchVaultMarkup()}<div class="section-title"><h2>Rooms</h2></div>${overview.rooms.map(room => `<article class="admin-card"><strong>${esc(room.label)}</strong><p>${room.member_count} members · ${room.closed_at ? 'Closed' : 'Open'}</p>${room.research ? `<button class="text-button" data-action="admin-read" data-id="${esc(room.id)}">View / export research chat</button>` : '<p class="small-note">Private room · no admin message archive</p>'}<button class="text-button danger-text" data-action="admin-clear-chat" data-id="${esc(room.id)}">Clear shared chat</button>${!room.closed_at ? `<button class="text-button danger-text" data-action="admin-close-room" data-id="${esc(room.id)}">Close room</button>` : ''}</article>`).join('')}<div class="section-title"><h2>Members</h2></div>${overview.profiles.map(person => `<article class="admin-card"><div class="admin-person"><strong>${esc(person.display_name)}</strong><span class="eyebrow">${person.disabled ? 'DISABLED' : 'ACTIVE'}</span></div><p class="metadata">IP: ${esc(person.last_ip || 'Not recorded')}<br>Updated: ${esc(date(person.updated_at))}</p>${person.user_id !== userId() ? `<button class="text-button ${person.disabled ? '' : 'danger-text'}" data-action="toggle-member" data-id="${esc(person.user_id)}" data-disabled="${person.disabled ? 'false' : 'true'}">${person.disabled ? 'Enable member' : 'Disable member'}</button>` : ''}</article>`).join('')}<div class="quiet-note">${icon('lock')}Private chats stay on participants’ devices. Research rooms have explicit consent and a bounded encrypted archive. Shared clearing syncs to updated apps when they reconnect.</div>`;
+  const requests = overview.deletion_requests.filter(item => item.status === 'pending'), extensions = (overview.extension_requests || []).filter(item => item.status === 'pending');
+  const tabs = [['rooms','Rooms'],['requests',`Requests (${requests.length + extensions.length})`],['members','Members'],['notices','Notices'],['releases','Releases']];
+  const tab = tabs.some(([id]) => id === state.adminTab) ? state.adminTab : 'rooms';
+  let content = '';
+  if (tab === 'rooms') content = `${researchVaultMarkup()}${button('admin-create-group', 'Create group with no expiry', 'primary full', 'plus')}<p class="small-note">Private rooms have no admin message archive. Research rooms require explicit consent and an unlocked research vault.</p>${adminPageMarkup(overview.rooms, room => `<article class="admin-card"><strong>${esc(room.label)}</strong><p>${room.member_count} members · ${room.closed_at ? 'Closed' : 'Open'} · ${esc(expiryLabel(room))}</p><div class="admin-actions">${room.research ? `<button class="text-button" data-action="admin-read" data-id="${esc(room.id)}">View / export research chat</button>` : ''}<button class="text-button danger-text" data-action="admin-clear-chat" data-id="${esc(room.id)}">Clear shared chat</button>${!room.closed_at ? `<button class="text-button" data-action="admin-extend-room" data-id="${esc(room.id)}">Extend time</button><button class="text-button danger-text" data-action="admin-close-room" data-id="${esc(room.id)}">Close room</button>` : ''}</div></article>`)} `;
+  if (tab === 'requests') content = `<div class="section-title"><h2>Deletion requests</h2></div>${requests.map(item => `<article class="admin-card"><strong>${esc(item.room_label)}</strong><p>${esc(item.display_name)} requested room deletion.</p><div class="paired-actions">${adminRequestButton('approve-delete',item.id,'Approve',true)}${adminRequestButton('reject-delete',item.id,'Decline')}</div></article>`).join('') || '<p class="empty-inline">No pending deletion requests.</p>'}<div class="section-title"><h2>Extension requests</h2></div>${extensions.map(item => `<article class="admin-card"><strong>${esc(item.room_label)}</strong><p>${esc(item.display_name)} requests ${item.hours} extra hours.</p><div class="paired-actions">${adminRequestButton('approve-extension',item.id,'Approve')}${adminRequestButton('reject-extension',item.id,'Decline')}</div></article>`).join('') || '<p class="empty-inline">No pending extension requests.</p>'}`;
+  if (tab === 'members') content = adminPageMarkup(overview.profiles, person => `<article class="admin-card"><div class="admin-person"><strong>${esc(person.display_name)}</strong><span class="eyebrow">${person.disabled ? 'DISABLED' : 'ACTIVE'}</span></div><p class="metadata">IP: ${esc(person.last_ip || 'Not recorded')}<br>Updated: ${esc(date(person.updated_at))}</p>${person.user_id !== userId() ? `<button class="text-button ${person.disabled ? '' : 'danger-text'}" data-action="toggle-member" data-id="${esc(person.user_id)}" data-disabled="${person.disabled ? 'false' : 'true'}">${person.disabled ? 'Enable member' : 'Disable member'}</button>` : ''}</article>`);
+  if (tab === 'releases') content = releaseAdminMarkup();
+  if (tab === 'notices') content = `<div class="section-title"><h2>Company bulletin</h2><button class="text-button" data-action="new-notice">Publish ${icon('plus')}</button></div>${overview.notices.map(item => `<article class="admin-card"><strong>${esc(item.title)}</strong><p>${esc(item.body)}</p><button class="text-button danger-text" data-action="remove-notice" data-id="${esc(item.id)}">Remove notice</button></article>`).join('') || '<p class="empty-inline">No notices published.</p>'}`;
+  return `<div class="page-intro compact"><span class="eyebrow">KITTY CORP. / ADMINISTRATOR</span><h1>Control room<span>.</span></h1><p>A clear view of rooms, requests and releases.</p></div><div class="admin-stats"><div><strong>${overview.profiles.length}</strong><span>Members</span></div><div><strong>${overview.rooms.filter(room => !room.closed_at).length}</strong><span>Open rooms</span></div><div><strong>${requests.length + extensions.length}</strong><span>Requests</span></div></div><div class="filter-chips admin-tabs" role="group" aria-label="Administrator sections">${tabs.map(([id,label]) => `<button data-action="admin-tab" data-tab="${id}" aria-pressed="${tab === id}">${esc(label)}</button>`).join('')}</div><div class="section-title"><h2>${esc(tabs.find(([id]) => id === tab)[1])}</h2><button class="text-button" data-action="refresh-admin">Refresh</button></div>${content}`;
+}
+function adminRequestButton(action, id, label, danger = false) { return `<button class="button ${danger ? 'danger' : 'secondary'}" data-action="${action}" data-id="${esc(id)}" ${state.busy ? 'disabled' : ''}>${label}</button>`; }
+function adminPageMarkup(items, draw) {
+  const pageSize = 40, pages = Math.max(1, Math.ceil(items.length / pageSize));
+  state.adminPage = Math.min(state.adminPage, pages - 1);
+  return `${items.slice(state.adminPage * pageSize, (state.adminPage + 1) * pageSize).map(draw).join('') || '<p class="empty-inline">Nothing here yet.</p>'}${pages > 1 ? `<div class="admin-pagination"><button class="button secondary" data-action="admin-page" data-step="-1" ${state.adminPage === 0 ? 'disabled' : ''}>Previous</button><span>${state.adminPage + 1} / ${pages}</span><button class="button secondary" data-action="admin-page" data-step="1" ${state.adminPage + 1 === pages ? 'disabled' : ''}>Next</button></div>` : ''}`;
 }
 function releaseAdminMarkup() {
   const release = state.admin.release;
   return `<div class="section-title"><h2>Android releases</h2><button class="text-button" data-action="new-release">Publish ${icon('plus')}</button></div><article class="admin-card">${release ? `<strong>SecretChat ${esc(release.version)} · build ${esc(release.version_code)}</strong><p>${esc(release.notes || 'Latest published update')}</p>` : '<strong>No update published yet</strong><p>Upload your signed APK to a direct HTTPS download, then publish its version and SHA-256 checksum here.</p>'}<p class="small-note">Use the same Android signing key for every release and increase the build number. Publishing alerts registered devices and shows an install prompt in updated apps. Android controls notification delivery.</p></article>`;
 }
-function adminLifetimeMarkup() {
-  const requests = (state.admin.extension_requests || []).filter(item => item.status === 'pending');
-  return `<div class="section-title"><h2>Room lifetimes</h2></div>${button('admin-create-group','Create a group with no expiry','primary full','plus')}
-    <p class="small-note">Only administrators can create groups without an expiry. Capacity and member limits still apply.</p>
-    <div class="section-title"><h2>Extension requests <span>${requests.length}</span></h2></div>
-    ${requests.map(item => `<article class="admin-card"><strong>${esc(item.room_label)}</strong><p>${esc(item.display_name)} requests ${item.hours} extra hours.</p><div class="paired-actions"><button class="button primary" data-action="approve-extension" data-id="${esc(item.id)}" ${state.busy ? 'disabled' : ''}>Approve</button><button class="button secondary" data-action="reject-extension" data-id="${esc(item.id)}" ${state.busy ? 'disabled' : ''}>Decline</button></div></article>`).join('') || '<p class="empty-inline">No pending extension requests.</p>'}
-    ${state.admin.rooms.filter(room => !room.closed_at && room.expires_at !== 'infinity').map(room => `<article class="admin-card"><strong>${esc(room.label)}</strong><p>${esc(expiryLabel(room))}</p><button class="text-button" data-action="admin-extend-room" data-id="${esc(room.id)}">Extend time ${icon('plus')}</button></article>`).join('')}`;
-}
 function modalMarkup() {
   const modal = state.modal;
   let content = '';
+  if (modal.type === 'search-chat') content = `<span class="eyebrow">ON THIS DEVICE</span><h2>Find a moment.</h2><label class="message-search">${icon('search')}<input id="chat-search-input" type="search" value="${esc(state.chatQuery)}" maxlength="200" placeholder="Search messages or names" aria-label="Search saved messages" /></label><div id="chat-search-results">${searchResultsMarkup()}</div>`;
+
     if (modal.type === 'research-consent') content = `<span class="eyebrow">RESEARCH ROOM</span><h2>Review before joining.</h2><p>${esc(researchNotice)}</p><div class="paired-actions">${button('close-modal','Cancel','secondary')}${button('accept-research','Agree & join','primary')}</div>`;
   if (modal.type === 'research-vault') content = `<span class="eyebrow">ADMINISTRATOR VAULT</span><h2>${modal.exists ? 'Unlock research chats.' : 'Set up the research vault.'}</h2><p>${modal.exists ? 'Your password decrypts the research key on this device.' : 'Choose a unique password of at least 12 characters. Keep it in your password manager. Private rooms are unaffected. This key cannot be replaced or recovered in this version.'}</p><form id="vault-form" data-exists="${modal.exists}"><label>Vault password<input name="password" type="password" minlength="12" maxlength="256" autocomplete="${modal.exists ? 'current-password' : 'new-password'}" required /></label>${!modal.exists ? '<label>Confirm password<input name="confirmPassword" type="password" minlength="12" maxlength="256" autocomplete="new-password" required /></label>' : ''}<button class="button primary full" ${state.busy ? 'disabled' : ''}>${modal.exists ? 'Unlock' : 'Create vault'}</button></form><p class="small-note">The unlocked key stays in memory and locks when you leave the app or sign out.</p>`;
   if (modal.type === 'clear-vote') { const request=state.clearRequest, votes=request?.votes || {}, total=request?.members?.length || 0, approved=Object.values(votes).filter(v=>v===true).length; content=`<span class="eyebrow">SHARED CLEARING</span><h2>Everyone gets a say.</h2><p>${approved} of ${total} members approved. Status: ${esc(request?.status || 'unavailable')}.</p><p>All current members must approve within 24 hours. One decline stops the request; a new member joining cancels it. Updated apps remove saved history when they reconnect. Existing exports or older apps cannot be erased.</p>${request?.status==='pending' && !Object.hasOwn(votes,userId()) ? `<div class="paired-actions">${button('vote-no','Decline','secondary')}${button('vote-yes','Approve clear','danger')}</div>` : button('close-modal','Close','secondary full')}`; }
@@ -198,16 +255,16 @@ function modalMarkup() {
     content = `<span class="modal-emblem">${icon('plus')}</span><span class="eyebrow">${admin ? 'ADMINISTRATOR CONTROL' : 'ROOM EXTENSION REQUEST'}</span><h2>Keep the conversation going.</h2><p>${esc(room.label)} · ${esc(expiryLabel(room))}</p><form id="extension-form" data-admin="${admin}" data-id="${esc(room.id)}"><label>Extra hours${admin ? '<input name="hours" type="number" min="1" max="8760" step="1" value="24" required />' : `<select name="hours">${durationOptions()}</select>`}</label><p class="small-note">${admin ? 'Adds time to the current expiry, or from now if the room already expired. Closed rooms stay closed.' : 'The administrator must approve your request before the expiry changes.'}</p><button class="button primary full" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? loading('Saving') : admin ? 'Extend room' : 'Send request'}</button></form>`;
   }
   if (modal.type === 'create' || modal.type === 'join') content = `<span class="modal-emblem">${icon(modal.type === 'create' ? 'plus' : 'hash')}</span><span class="eyebrow">${modal.type === 'create' ? 'A NEW FREQUENCY' : 'WELCOME TO THE ROOM'}</span><h2>${modal.type === 'create' ? 'Make some space.' : 'Tune in.'}</h2><p>${modal.type === 'create' ? 'Share your invitation only with people you trust.' : 'Paste the complete invitation code to unlock this room.'}</p><form id="room-form" data-type="${modal.type}"><label>Your name<input name="displayName" autocomplete="nickname" maxlength="40" placeholder="How should we call you?" value="${esc(state.profile.display_name)}" required /></label>${modal.type === 'create' ? createRoomFields(modal) : `<label>Room invitation<textarea name="code" class="code-input" placeholder="KT…" rows="2" autocapitalize="characters" spellcheck="false" required>${esc(modal.code || '')}</textarea></label>`}<p class="small-note">${modal.type === 'create' ? 'A room creator is a regular participant. Only the app administrator can approve room deletion.' : 'An invitation unlocks this room. Never share it in a public post.'}</p><button class="button primary full" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? loading('Connecting') : `${modal.type === 'create' ? 'Create room' : 'Join room'}${icon('arrow')}`}</button></form>`;
-  if (modal.type === 'invite') content = `<span class="modal-emblem">${icon('lock')}</span><span class="eyebrow">YOUR INVITATION</span><h2>Let your people in.</h2><p>Anyone with this code can join and decrypt new messages. Share it privately.</p><div class="invite-code">${esc(formatAccessCode(modal.code))}</div>${button('copy-invite', 'Copy invitation', 'primary full', 'copy')}<p class="small-note">This is the encryption key for your mobile room. Web rooms use a separate system.</p>`;
+  if (modal.type === 'invite') content = `<span class="modal-emblem">${icon('lock')}</span><span class="eyebrow">YOUR INVITATION</span><h2>Let your people in.</h2><p>Anyone with this code can join and decrypt new messages. Share it privately.</p><div class="invite-code">${esc(formatAccessCode(modal.code))}</div>${button('share-invite', 'Share privately', 'primary full', 'share')}${button('copy-invite', 'Copy invitation', 'secondary full', 'copy')}<p class="small-note">Works in SecretChat V2 on Android and the website. Older browser rooms use their original invitations at /legacy.</p>`;
   if (modal.type === 'privacy') content = `<span class="modal-emblem">${icon('shield')}</span><span class="eyebrow">PRIVACY, EXPLAINED</span><h2>Built for a smaller circle.</h2><div class="privacy-points"><div><strong>Encrypted between participants</strong><p>Messages are encrypted on your device using your room invitation. The mobile relay cannot read private chats. In optional research rooms, participants explicitly agree that Kitty Corp. can read and export messages for training and research.</p></div><div><strong>Your history lives here</strong><p>Up to 500 messages per room stay encrypted on this device. Private rooms have no chat cloud backup. Research rooms keep up to 1,000 encrypted messages until an approved clear. Across research rooms, 4,096 messages can be retained. Full research archives pause new messages until cleared. Changing phones, clearing app data, or uninstalling can erase your history and saved invitations.</p></div><div><strong>Clear about metadata</strong><p>The backend keeps your account identity, display name, room memberships, and observed IP address. The Kitty Corp. administrator can view this metadata.</p></div><div><strong>A shared responsibility</strong><p>Keep invitations private. Participants can copy messages or photograph another screen. Android screen capture protection cannot prevent every form of capture.</p></div></div>${button('close-modal', 'Got it', 'primary full')}`;
-  if (modal.type === 'room-options') { const room = state.room; content = `<span class="eyebrow">ROOM SETTINGS</span><h2>${esc(room.label)}</h2><div class="modal-actions">${!room.closed_at ? button('show-invite', 'Share invitation', 'secondary full', 'copy') : ''}${!room.closed_at ? button('toggle-watch', room.watched === false ? 'Watch room activity' : 'Stop watching room activity', 'secondary full', 'bell') : ''}${room.is_creator && !room.closed_at && room.expires_at !== 'infinity' ? button('request-extension', 'Request more time', 'secondary full', 'plus') : ''}${!room.closed_at ? button('request-shared-clear', 'Ask everyone to clear chat', 'secondary full', 'trash') : ''}${state.clearRequest ? button('clear-vote', 'Shared clear request', 'secondary full', 'check') : ''}${button('clear-room', 'Clear history on this device', 'secondary full', 'trash')}${room.is_creator && !room.closed_at ? button('request-delete', 'Request room deletion', 'secondary full', 'trash') : ''}${button('leave-view', 'Leave conversation', 'primary full', 'logout')}</div><p class="small-note">${esc(expiryLabel(room))}. Leaving this screen ends your online presence. Your saved conversation remains in Rooms.</p>`; }
+  if (modal.type === 'room-options') { const room = state.room; content = `<span class="eyebrow">ROOM SETTINGS</span><h2>${esc(room.label)}</h2><div class="modal-actions">${!room.closed_at ? button('show-invite', 'Share invitation', 'secondary full', 'copy') : ''}${!room.closed_at ? button('toggle-watch', room.watched === false ? 'Watch room activity' : 'Stop watching room activity', 'secondary full', 'bell') : ''}${room.is_creator && !room.closed_at && room.expires_at !== 'infinity' ? button('request-extension', 'Request more time', 'secondary full', 'plus') : ''}${!room.closed_at ? button('request-shared-clear', 'Ask everyone to clear chat', 'secondary full', 'trash') : ''}${state.clearRequest ? button('clear-vote', 'Shared clear request', 'secondary full', 'check') : ''}${button('search-chat', 'Search saved messages', 'secondary full', 'search')}${button('clear-room', 'Clear history on this device', 'secondary full', 'trash')}${room.is_creator && !room.closed_at ? button('request-delete', 'Request room deletion', 'secondary full', 'trash') : ''}${button('leave-view', 'Leave conversation', 'primary full', 'logout')}</div><p class="small-note">${esc(expiryLabel(room))}. Leaving this screen ends your online presence. Your saved conversation remains in Rooms.</p>`; }
   if (modal.type === 'members') content = `<span class="eyebrow">LIVE PRESENCE</span><h2>On this frequency.</h2><p>${state.online.length} ${state.online.length === 1 ? 'person' : 'people'} online right now</p><div class="member-list">${state.online.map(person => `<div><span class="avatar">${esc(initial(person.display_name))}</span><strong>${person.is_creator ? `Host (${esc(person.display_name)})` : esc(person.display_name)}${person.user_id === userId() ? ' · You' : ''}</strong><i class="status-dot"></i></div>`).join('') || '<p>No active participants.</p>'}</div>`;
   if (modal.type === 'edit-name') content = `<span class="eyebrow">YOUR CALL SIGN</span><h2>What should we call you?</h2><form id="name-form"><label>Display name<input name="displayName" value="${esc(state.profile.display_name)}" maxlength="40" autocomplete="nickname" required /></label><button class="button primary full" ${state.busy ? 'disabled' : ''}>Save name ${icon('check')}</button></form>`;
   if (modal.type === 'support') content = `<span class="modal-emblem">${icon('heart')}</span><span class="eyebrow">SUPPORT THE SIGNAL</span><h2>A little help.<br>A lot of possibility.</h2><p>Support hosting and future SecretChat improvements. Donations are optional.</p><div class="wallet"><strong>Bitcoin · BTC</strong><small>Network: BITCOIN</small><code>bc1qvn36dkzq7wjq634j6yszg87yy252h7tx97pluc</code><button class="text-button" data-action="copy-btc">Copy address ${icon('copy')}</button></div><div class="wallet"><strong>Tether · USDT</strong><small>Network: ETHEREUM</small><code>0x5fa72e223cF8F270aC7bb329ceADBC2b4610d098</code><button class="text-button" data-action="copy-usdt">Copy address ${icon('copy')}</button></div><p class="small-note">Use the matching coin and network.</p>`;
   if (modal.type === 'new-notice') content = `<span class="eyebrow">KITTY CORP. BULLETIN</span><h2>Share an update.</h2><form id="notice-form"><label>Title<input name="title" maxlength="100" required /></label><label>Notice<textarea name="body" rows="5" maxlength="2000" required></textarea></label><button class="button primary full" ${state.busy ? 'disabled' : ''}>Publish notice ${icon('notice')}</button></form>`;
   if (modal.type === 'new-release') content = `<span class="eyebrow">ANDROID UPDATE SERVICE</span><h2>Publish an app update.</h2><p>First upload the signed APK to a direct HTTPS download. Only signed builds using the existing app signing key can update this app.</p><form id="release-form"><div class="paired-actions"><label>Version<input name="version" placeholder="1.0.1" maxlength="30" required /></label><label>Build number<input name="versionCode" type="number" min="${Number(state.admin?.release?.version_code || 0) + 1}" step="1" placeholder="2" required /></label></div><label>Direct HTTPS APK URL<input name="url" type="url" placeholder="https://example.com/secretchat.apk" required /></label><label>APK SHA-256 checksum<input name="sha256" autocapitalize="none" spellcheck="false" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" placeholder="64 hexadecimal characters" required /></label><label>What’s new<textarea name="notes" rows="4" maxlength="2000" placeholder="Tell members what changed."></textarea></label><button class="button primary full" ${state.busy ? 'disabled' : ''}>Publish update ${icon('download')}</button></form>`;
   if (modal.type === 'confirm') content = `<span class="modal-emblem">${icon(modal.icon || 'shield')}</span><h2>${esc(modal.title)}</h2><p>${esc(modal.body)}</p><div class="paired-actions">${button('close-modal', 'Cancel', 'secondary')}${button('confirm', modal.label || 'Continue', modal.danger ? 'danger' : 'primary')}</div>`;
-  if (modal.type === 'update') content = `<span class="modal-emblem">${icon('download')}</span><span class="eyebrow">FRESH ON THE FREQUENCY</span><h2>SecretChat ${esc(state.update.version)}</h2><p>${esc(state.update.notes || 'An update is ready for your device.')}</p><p class="small-note">Android will ask you to confirm installation. The APK checksum and signing certificate are checked before installation.</p>${button('install-update', 'Download & update', 'primary full', 'download')}`;
+  if (modal.type === 'update') content = `<span class="modal-emblem">${icon('download')}</span><span class="eyebrow">FRESH ON THE FREQUENCY</span><h2>SecretChat ${esc(state.update.version)}</h2><p>${esc(state.update.notes || 'An update is ready for your device.')}</p><p class="small-note">Android will ask you to confirm installation. The APK checksum and signing certificate are checked before installation.</p>${native ? button('install-update', 'Download & update', 'primary full', 'download') : `<a class="button primary full" href="${esc(state.update.apk_url)}">Download Android app ${icon('download')}</a>`}`;
   return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-label="${esc(modal.type.replaceAll('-', ' '))}"><div class="modal-handle"></div><button class="modal-close icon-button" data-action="close-modal" aria-label="Close dialog" ${state.busy ? 'disabled' : ''}>${icon('close')}</button>${content}${state.error ? `<p class="inline-error" role="alert">${esc(state.error)}</p>` : ''}</section></div>`;
 }
 function createRoomFields(modal) {
@@ -216,11 +273,13 @@ function createRoomFields(modal) {
 
 async function run(action, task, fullRender = true) {
   if (state.busy) return;
+  const account = userId(), generation = accountGeneration;
+  const current = () => account === userId() && generation === accountGeneration;
   state.busy = action; state.error = '';
   if (fullRender) render();
   try { return await task(); }
-  catch (error) { state.error = friendly(error); toast(state.error); }
-  finally { state.busy = ''; if (fullRender) render(); }
+  catch (error) { if (current()) { state.error = friendly(error); toast(state.error); } }
+  finally { if (current()) { state.busy = ''; if (fullRender) render(); } }
 }
 function openModal(type, data = {}) { state.error = ''; state.modal = { type, ...data }; render(); }
 function confirmAction(title, body, task, options = {}) { openModal('confirm', { title, body, task, ...options }); }
@@ -233,6 +292,7 @@ async function applyRoomEpoch(room, account, generation) {
     if (target) target.chat_epoch=epoch;
     if (state.room?.id===room.id) state.room.chat_epoch=epoch;
     await localData.clearHistory(account,room.id);
+    if (generation!==accountGeneration || account!==userId()) return;
     if (state.room?.id===room.id) { state.messages=[]; renderMessages(); }
     const result=await localData.update(account,'rooms',{},old=>({...old,[room.id]:{...old[room.id],chat_epoch:epoch}}));
     if (generation===accountGeneration && account===userId()) state.localRooms=result;
@@ -242,6 +302,7 @@ async function syncRoomState(roomId) {
   const generation=accountGeneration, account=userId(), result=await v16('state',roomId);
   if (generation!==accountGeneration || account!==userId()) return;
   await applyRoomEpoch(result.room,account,generation);
+  if (generation!==accountGeneration || account!==userId()) return;
   const target=state.rooms.find(r=>r.id===roomId); if (target) Object.assign(target,result.room);
   if (state.room?.id===roomId) {
     Object.assign(state.room,result.room);
@@ -256,20 +317,24 @@ async function refreshRooms() {
   const [rooms, notices] = await Promise.all([rpc('mobile_rooms'), rpc('mobile_notices')]);
   if (generation !== accountGeneration || account !== userId()) return;
   const remoteRooms = (Array.isArray(rooms) ? rooms : []).map(room => ({ ...room, closed_at: room.closed_at || (room.expires_at && Date.parse(room.expires_at) <= Date.now() ? room.expires_at : null) }));
-  for (const room of remoteRooms) await applyRoomEpoch(room, account, generation);
+  for (const room of remoteRooms) { await applyRoomEpoch(room, account, generation); if (generation !== accountGeneration || account !== userId()) return; }
   const remoteIds = new Set(remoteRooms.map(room => room.id));
   const archives = Object.entries(state.localRooms).filter(([id]) => !remoteIds.has(id)).map(([id, saved]) => ({ ...saved, id, label: saved.label || 'Archived room', closed_at: saved.closed_at || saved.expires_at || new Date().toISOString(), member_count: saved.member_count || 1 }));
   state.rooms = [...remoteRooms, ...archives];
   state.notices = Array.isArray(notices) ? notices : [];
   await localData.write(account, 'room-index', state.rooms);
+  if (generation !== accountGeneration || account !== userId()) return;
   await localData.write(account, 'notices', state.notices);
   if (generation !== accountGeneration || account !== userId()) return;
   state.backendReady = true;
   await syncSubscriptions();
 }
-async function rememberRoom(room, code) {
-  const account = userId(), generation = accountGeneration;
-  const result = await localData.update(account, 'rooms', {}, old => ({ ...old, [room.id]: { code, label: room.label, created_by: room.created_by, created_at: room.created_at, expires_at: room.expires_at, closed_at: room.closed_at, is_creator: room.is_creator, member_count: room.member_count, chat_epoch: room.chat_epoch || 1, research: room.research === true, last_opened: Date.now() } }));
+async function rememberRoom(room, code, account = userId(), generation = accountGeneration) {
+  if (generation !== accountGeneration || account !== userId()) return;
+  const result = await localData.update(account, 'rooms', {}, old => {
+    if (generation !== accountGeneration || account !== userId()) return old;
+    return { ...old, [room.id]: { code, label: room.label, created_by: room.created_by, created_at: room.created_at, expires_at: room.expires_at, closed_at: room.closed_at, is_creator: room.is_creator, member_count: room.member_count, chat_epoch: room.chat_epoch || 1, research: room.research === true, last_opened: Date.now() } };
+  });
   if (generation === accountGeneration && account === userId()) state.localRooms = result;
 }
 async function keyFor(roomId) {
@@ -288,9 +353,20 @@ async function receiveMessage(envelope, roomId, account, generation) {
   const decoded = await decryptMessage(await keyFor(roomId), envelope, roomId);
   if (generation !== accountGeneration || account !== userId()) return;
   if (epoch !== Number(room.chat_epoch || 1)) return;
-  const messages = await localData.update(account, `history:${roomId}`, [], old => epoch === Number(room.chat_epoch || 1) ? mergeHistory(old,decoded) : []);
+  let isNew = false;
+  const messages = await localData.update(account, `history:${roomId}`, [], old => {
+    if (epoch !== Number(room.chat_epoch || 1)) return [];
+    isNew = !old.some(message => message.id === decoded.id);
+    return mergeHistory(old, decoded);
+  });
+  if (generation !== accountGeneration || account !== userId()) return;
+  if (isNew && decoded.user_id !== account) await persistRoomTools(old => {
+    if (generation !== accountGeneration || account !== userId() || (state.appActive && state.room?.id === roomId)) return old;
+    return { ...old, unread: { ...old.unread, [roomId]: Math.min(99, (old.unread[roomId] || 0) + 1) } };
+  }, account, generation);
+  if (generation !== accountGeneration || account !== userId()) return;
   if (state.room?.id === roomId && generation === accountGeneration) { state.messages = messages; renderMessages(); }
-  if (state.appActive && generation === accountGeneration && account === userId()) await announceMessage(room,envelope,account);
+  if (isNew && state.appActive && generation === accountGeneration && account === userId()) await announceMessage(room,envelope,account);
 }
 function queueMessage(envelope, roomId, account, generation) {
   const previous = messageQueues.get(roomId) || Promise.resolve();
@@ -354,6 +430,7 @@ async function heartbeat() {
     const result = await invoke('mobile-presence', { room_id: room.id });
     if (generation !== accountGeneration || state.room?.id !== room.id) return;
     await syncRoomState(room.id);
+    if (generation !== accountGeneration || state.room?.id !== room.id) return;
     state.online = Array.isArray(result.online) ? result.online : [];
     connectionLabel();
   } catch (error) { if (generation === accountGeneration && state.room?.id === room.id) { state.error = friendly(error); connectionLabel(); } }
@@ -362,27 +439,39 @@ async function heartbeat() {
 async function enterRoom(room) {
   if (!state.localRooms[room.id]?.code) { openModal('join'); return; }
   const generation = accountGeneration, account = userId();
-  await leaveView(false);
-  if (!state.offline && state.backendReady) { const fresh = await v16('state',room.id); Object.assign(room,fresh.room); state.clearRequest=fresh.clear_request; await applyRoomEpoch(room,account,generation); }
-  const messages = await localData.read(account, `history:${room.id}`, []);
-  if (generation !== accountGeneration) return;
-  state.room = room; state.messages = mergeHistory([], messages); state.draft = ''; state.screen = 'chat'; state.modal = null; state.online = []; state.connected = false;
+  if (await leaveView(false) === false || generation !== accountGeneration || account !== userId()) return;
+  if (!state.offline && state.backendReady) {
+    const fresh = await v16('state',room.id);
+    if (generation !== accountGeneration || account !== userId()) return;
+    Object.assign(room,fresh.room); state.clearRequest=fresh.clear_request; await applyRoomEpoch(room,account,generation);
+    if (generation !== accountGeneration || account !== userId()) return;
+  }
+  const [messages, draft] = await Promise.all([localData.read(account, `history:${room.id}`, []), draftStore.load(account, room.id)]);
+  if (generation !== accountGeneration || account !== userId()) return;
+  state.room = room; state.messages = mergeHistory([], messages); state.draft = draft; state.screen = 'chat'; state.modal = null; state.online = []; state.connected = false;
+  await markRoomRead(room.id, account, generation);
+  if (generation !== accountGeneration || account !== userId()) return;
   await rememberRoom(room, state.localRooms[room.id].code);
   if (generation !== accountGeneration || account !== userId()) return;
   render();
   if (!room.closed_at && !state.offline) { await syncSubscriptions(); clearInterval(heartbeatTimer); heartbeatTimer = setInterval(heartbeat, 30000); await heartbeat(); }
 }
 async function leaveView(sync = true) {
+  const room = state.room, account = userId(), generation = accountGeneration;
+  if (room && account) await draftStore.release(account, room.id);
+  if (generation !== accountGeneration || account !== userId() || state.room !== room) return false;
   clearInterval(heartbeatTimer);
-  const room = state.room;
   state.clearRequest = null;
   state.room = null; state.connected = false; state.online = []; state.messages = []; state.draft = '';
   if (room && !room.closed_at && !state.offline) await rpc('mobile_leave_room', { p_room_id: room.id }).catch(() => {});
+  if (generation !== accountGeneration || account !== userId()) return false;
   if (sync) await syncSubscriptions();
+  return generation === accountGeneration && account === userId();
 }
 async function navigate(screen) {
   if (screen === 'admin' && state.profile?.is_admin !== true) return;
-  await leaveView(false); state.screen = screen; state.modal = null; state.error = ''; render();
+  if (await leaveView(false) === false) return;
+  state.screen = screen; state.modal = null; state.error = ''; render();
   await syncSubscriptions();
   if (screen === 'admin') await loadAdmin();
 }
@@ -397,97 +486,153 @@ async function saveName(value) {
   await localData.write(account, 'profile', { ...profile, is_admin: false });
 }
 async function submitRoom(form, researchAck = false) {
+  const account = userId(), generation = accountGeneration;
+  const current = () => account === userId() && generation === accountGeneration;
+  if (!account) return;
   const data = new FormData(form), type = form.dataset.type;
   const name = String(data.get('displayName') || '').trim(), label = String(data.get('label') || '').trim();
   const code = type === 'create' ? randomAccessCode() : normalizeAccessCode(data.get('code'));
   if (!isAccessCode(code)) { state.error = 'Enter the complete 32-character room invitation starting with KT.'; render(); return; }
   await run('submit-room', async () => {
+    if (!current()) return;
     await saveName(name);
+    if (!current()) return;
     const hash = await accessCodeHash(code);
+    if (!current()) return;
     const duration = Number(data.get('duration') || 24);
     if (!Number.isInteger(duration) || duration < 1 || duration > 24) throw new Error('Choose a room duration from 1 to 24 hours.');
     const research = data.get('research') === 'on';
     if (type === 'join' && !researchAck) {
       const info = await v16('invite',null,{code_hash:hash});
+      if (!current()) return;
       if (info.research) { state.modal={type:'research-consent',form}; return; }
     }
     let wrapped;
     if (type === 'create' && research) {
       const publicKey = await v16('public-key');
+      if (!current()) return;
       if (!publicKey) throw new Error('The administrator must set up the research vault before research rooms can be created.');
       wrapped=await wrapResearchInvitation(publicKey,code);
+      if (!current()) return;
     }
     const result = type === 'create' ? await v16('create',null,{code_hash:hash,label,hours:duration,permanent:data.get('permanent')==='on',research,research_ack:research,wrapped_invitation:wrapped}) : await v16('join',null,{code_hash:hash,research_ack:researchAck});
+    if (!current()) return;
     const room = Array.isArray(result) ? result[0] : result;
     if (!room?.id) throw new Error('The room did not return a valid invitation. Please try again.');
-    await rememberRoom(room, code);
+    await rememberRoom(room, code, account, generation);
+    if (!current()) return;
     await refreshRooms();
+    if (!current()) return;
     await enterRoom(state.rooms.find(item => item.id === room.id) || room);
+    if (!current()) return;
     if (type === 'create') openModal('invite', { code });
   });
 }
+
 async function sendMessage() {
-  const room = state.room, account = userId(), generation = accountGeneration, text = state.draft.trim();
+  const room = state.room, account = userId(), generation = accountGeneration, sentDraft = state.draft, text = sentDraft.trim();
   if (sending || !text || !room || room.closed_at || !state.connected || state.offline) return;
+  const draftCapture = draftStore.capture(account, room.id);
   sending = true; connectionLabel();
   try {
     const id = crypto.randomUUID();
     const payload = await encryptMessage(await keyFor(room.id), { roomId: room.id, userId: account, id, text, ...(room.research || Number(room.chat_epoch || 1)>1 ? {epoch:Number(room.chat_epoch || 1)} : {}) });
+    if (generation !== accountGeneration || account !== userId()) return;
     const result = await invoke('mobile-send', { room_id: room.id, message_id: id, payload });
-    if (generation !== accountGeneration) return;
+    if (generation !== accountGeneration || account !== userId()) return;
     const envelope = result.message || result;
     if (!envelope.id || !envelope.created_at) throw new Error('Delivery was not confirmed. Refresh the room before retrying.');
     await receiveMessage(envelope, room.id, account, generation);
-    if (state.room?.id === room.id) {
+    if (generation !== accountGeneration || account !== userId()) return;
+    const consumed = await draftStore.consume(draftCapture);
+    if (consumed && generation === accountGeneration && account === userId() && state.room?.id === room.id && state.draft === sentDraft) {
       state.draft = ''; const field = document.querySelector('#message-input');
       if (field) { field.value = ''; field.style.height = ''; field.focus(); }
       renderMessages(true);
     }
-  } catch (error) { toast(friendly(error)); }
-  finally { sending = false; connectionLabel(); }
+  } catch (error) { if (generation === accountGeneration && account === userId()) toast(friendly(error)); }
+  finally { draftStore.releaseCapture(draftCapture); if (generation === accountGeneration && account === userId()) { sending = false; connectionLabel(); } }
 }
-async function cleanupSession() {
+function cleanupSession() {
+  // Detach private UI and capture old resources before any account transition can await.
+  const account = authUserId || userId(), channels = [...subscriptions.values()].map(entry => entry.channel);
+  if (releaseChannel) channels.push(releaseChannel);
+  releaseChannel = null; subscriptions.clear();
+  clearInterval(heartbeatTimer); accountGeneration++; authUserId = null; authLoading = false; sending = false;
   researchKey=null; updateCheckAt=0; state.update=null; state.clearRequest=null;
-  if (releaseChannel) { await supabase.removeChannel(releaseChannel); releaseChannel=null; }
-  clearInterval(heartbeatTimer); accountGeneration++; authUserId = null; authLoading = false;
-  const entries = [...subscriptions.values()]; subscriptions.clear();
-  await Promise.allSettled(entries.map(({ channel }) => supabase.removeChannel(channel)));
   keyCache.clear(); messageQueues.clear();
-  state.profile = null; state.rooms = []; state.localRooms = {}; state.messages = []; state.online = []; state.admin = null; state.notices = []; state.room = null; state.modal = null; state.draft = ''; state.screen = 'home'; state.backendReady = false; state.connected = false;
+  state.preferences = normalizePreferences(); state.roomTools = normalizeRoomTools(); state.roomQuery = ''; state.roomFilter = 'all'; state.chatQuery = ''; state.adminTab = 'rooms'; state.adminPage = 0; applyAppearance();
+  state.profile = null; state.rooms = []; state.localRooms = {}; state.messages = []; state.online = []; state.admin = null; state.notices = []; state.room = null; state.modal = null; state.draft = ''; state.screen = 'home'; state.backendReady = false; state.connected = false; state.error = ''; state.authError = ''; state.busy = '';
+  return { account, channels };
 }
-async function onSession(session) {
-  const previous = authUserId;
-  state.session = session;
-  if (native) await Device.setScreenshotSession({ accessToken: session?.access_token || null }).catch(() => {});
-  if (!session) { if (previous) { await clearNotificationSession(); await cleanupSession(); } state.booting = false; render(); return; }
-  if (session.user.id === previous && (authLoading || state.profile)) return;
-  if (previous && previous !== session.user.id) { await clearNotificationSession(); await cleanupSession(); render(); }
-  authUserId = session.user.id; authLoading = true;
-  const generation = ++accountGeneration, account = session.user.id;
+const applySession = createRefreshQueue(async () => {
+  const session = latestRequestedSession, account = session?.user?.id || null;
+  const generation = accountGeneration, revision = sessionRevision;
+  const current = () => generation === accountGeneration && revision === sessionRevision && account === (userId() || null);
+  for (const cleanup of sessionCleanups.splice(0)) {
+    if (cleanup.account) await draftStore.release(cleanup.account).catch(() => {});
+    await clearNotificationSession().catch(() => {});
+    await Promise.allSettled(cleanup.channels.map(channel => supabase.removeChannel(channel)));
+  }
+  if (!current()) return;
+  if (native) await Device.setScreenshotSession({ accessToken: latestRequestedSession?.access_token || null }).catch(() => {});
+  if (!current()) return;
+  if (!session) { authLoading = false; state.booting = false; render(); return; }
+  if (account === authUserId && state.profile) {
+    await supabase.realtime.setAuth(latestRequestedSession.access_token).catch(() => {});
+    return;
+  }
+  authUserId = account; authLoading = true;
   try {
-    const [localRooms, rooms, notices, profile] = await Promise.all([localData.read(account, 'rooms', {}), localData.read(account, 'room-index', []), localData.read(account, 'notices', []), localData.read(account, 'profile', null)]);
-    if (generation !== accountGeneration || account !== userId()) return;
-    state.localRooms = localRooms; state.rooms = rooms; state.notices = notices; state.profile = profile;
+    const [localRooms, rooms, notices, profile, preferences, roomTools] = await Promise.all([localData.read(account, 'rooms', {}), localData.read(account, 'room-index', []), localData.read(account, 'notices', []), localData.read(account, 'profile', null), localData.read(account, 'appearance', {}), localData.read(account, 'room-tools', {})]);
+    if (!current()) return;
+    state.localRooms = localRooms; state.rooms = rooms; state.notices = notices; state.profile = profile; state.preferences = normalizePreferences(preferences); state.roomTools = normalizeRoomTools(roomTools); applyAppearance();
     if (state.profile) state.profile.is_admin = false;
     try {
       const profile = await rpc('mobile_profile', { p_display_name: null });
-      if (generation !== accountGeneration) return;
+      if (!current()) return;
       state.profile = profile;
       await localData.write(account, 'profile', { ...profile, is_admin: false });
-      await supabase.realtime.setAuth(session.access_token);
+      if (!current()) return;
+      await supabase.realtime.setAuth(latestRequestedSession.access_token);
+      if (!current()) return;
       await refreshRooms();
+      if (!current()) return;
       void invoke('mobile-device', {}).catch(() => {});
     } catch (error) {
+      if (!current()) return;
       if (!state.profile) throw error;
       state.error = friendly(error); state.backendReady = false;
     }
-    await loadNotificationSettings(account, id => { const room = state.rooms.find(item => item.id === id); if (room) void run('open-room', () => enterRoom(room)); }, open => { updateCheckAt=0; void checkUpdate(!open).catch(()=>{}); }).catch(error => { notificationStatus.message = friendly(error); });
+    if (!current()) return;
+    await loadNotificationSettings(account, id => {
+      if (!current()) return;
+      const room = state.rooms.find(item => item.id === id); if (room) void run('open-room', () => enterRoom(room));
+    }, open => {
+      if (!current()) return;
+      updateCheckAt=0; void checkUpdate(!open).catch(()=>{});
+    }).catch(error => { if (current()) notificationStatus.message = friendly(error); });
+    if (!current()) return;
     state.authError = ''; state.screen = 'home';
     await syncSubscriptions();
+    if (!current()) return;
     updateCheckAt=0; void checkUpdate(true).catch(()=>{});
-  } catch (error) { state.authError = friendly(error); state.profile = null; }
-  finally { if (generation === accountGeneration) { authLoading = false; state.booting = false; render(); } }
+  } catch (error) { if (current()) { state.authError = friendly(error); state.profile = null; } }
+  finally { if (current()) { authLoading = false; state.booting = false; render(); } }
+});
+function onSession(session) {
+  const account = session?.user?.id || null, previous = latestRequestedSession?.user?.id || userId() || null;
+  if (account !== previous) {
+    sessionCleanups.push(cleanupSession());
+    sessionRevision++;
+    authLoading = !!account;
+    render();
+  }
+  latestRequestedSession = session;
+  state.session = session;
+  return applySession();
 }
+
 async function checkUpdate(automatic = false) {
   const generation = accountGeneration, account = userId();
   if (updateRequest?.generation === generation || !account || state.offline || (automatic && Date.now()-updateCheckAt<60000)) return;
@@ -509,7 +654,27 @@ async function copy(text, label) {
   try { await navigator.clipboard.writeText(text); toast(label); }
   catch { toast('Clipboard access was unavailable. Select and copy the displayed text.'); }
 }
+async function shareInvitation() {
+  const text = `Join ${state.room?.label || 'my room'} in SecretChat: ${state.modal.code}\nhttps://secret-chat-sable.vercel.app/`;
+  if (native) return Device.shareInvitation({ text });
+  if (!navigator.share) return copy(state.modal.code, 'Invitation copied. Share privately.');
+  try { await navigator.share({ title: 'Private SecretChat invitation', text }); }
+  catch (error) { if (error.name !== 'AbortError') return copy(state.modal.code, 'Invitation copied. Share privately.'); }
+}
 async function dispatch(action, element) {
+  if (native && state.preferences.haptics && ['home','rooms','account','admin','join','create','back'].includes(action)) void Device.hapticTap().catch(() => {});
+  if (action === 'set-theme') return element.dataset.theme === state.preferences.theme ? undefined : savePreferences({ theme: element.dataset.theme });
+  if (action === 'toggle-motion') return savePreferences({ motion: !state.preferences.motion });
+  if (action === 'toggle-haptics') return savePreferences({ haptics: !state.preferences.haptics });
+  if (action === 'room-filter') { state.roomFilter = element.dataset.filter; render(); return; }
+  if (action === 'pin-room') { await persistRoomTools(old => { const pinned = old.pinned.includes(element.dataset.id) ? old.pinned.filter(id => id !== element.dataset.id) : [...old.pinned, element.dataset.id]; if (pinned.length > 12) throw new Error('You can pin up to 12 rooms. Unpin one first.'); return { ...old, pinned }; }); render(); return; }
+  if (action === 'search-chat') { state.chatQuery = ''; openModal('search-chat'); return; }
+  if (action === 'copy-message') { const message = state.messages.find(m => m.id === element.dataset.id); if (message) return copy(message.text, 'Message copied.'); return; }
+  if (action === 'jump-message') { const id = element.dataset.id; state.modal = null; document.querySelector('.modal-backdrop')?.remove(); const node = [...(document.querySelector('#messages')?.children || [])].find(item => item.dataset.key === `message:${id}`); node?.scrollIntoView({ block: 'center', behavior: 'instant' }); node?.classList.add('search-highlight'); setTimeout(() => node?.classList.remove('search-highlight'), 1800); document.querySelector('#message-input')?.focus({ preventScroll: true }); return; }
+  if (action === 'kitty-ai') { if (native && (await Device.openKittyAI()).opened) return; return Browser.open({ url: 'https://kittycorp.vercel.app/launches/kitty-ai' }); }
+  if (action === 'share-invite') return shareInvitation();
+  if (action === 'admin-tab' && state.profile?.is_admin === true) { state.adminTab = element.dataset.tab; state.adminPage = 0; render(); return; }
+  if (action === 'admin-page' && state.profile?.is_admin === true) { state.adminPage = Math.max(0, state.adminPage + Number(element.dataset.step)); render(); return; }
   if (action === 'skip-launch') { state.launch = false; document.querySelector('.launch')?.remove(); return; }
   if (action === 'close-modal') { if (state.busy) return; state.modal = null; state.error = ''; render(); return; }
   if (action === 'dismiss-error') { state.error = ''; render(); return; }
@@ -536,17 +701,50 @@ async function dispatch(action, element) {
   if (action === 'test-sound') { chirp(); return; }
   if (action === 'notifications') return run(action, async () => { if (notificationStatus.enabled) { await disableNotifications(); notificationStatus.message = 'Room activity alerts are off.'; } else await enableNotifications(); });
   if (action === 'update') return run(action, () => checkUpdate(false));
+  if (action === 'install-update' && !native) return;
   if (action === 'install-update') return run(action, async () => { const result = await Device.installUpdate({ url: state.update.apk_url, sha256: state.update.sha256, versionCode: Number(state.update.version_code) }); state.modal = null; state.updateStatus = result.status === 'permission_required' ? 'Allow SecretChat to install updates in Android Settings, then tap Check for updates again.' : 'The Android installer is open. Confirm installation to finish updating.'; });
   if (action === 'toggle-watch') return run(action, async () => { await rpc('mobile_watch_room', { p_room_id: state.room.id, p_watched: state.room.watched === false }); state.room.watched = state.room.watched === false; await refreshRooms(); state.modal = null; toast(state.room.watched ? 'Room activity is being watched.' : 'Room activity alerts are muted.'); });
   if (action === 'request-delete') return confirmAction('Request room deletion?', 'The administrator will review your request. Your room stays open until it is approved. Saved copies on participants’ devices cannot be remotely erased.', async () => { await rpc('mobile_request_deletion', { p_room_id: state.room.id }); toast('Deletion request sent for review.'); }, { label: 'Send request', icon: 'trash' });
-  if (action === 'clear-room') return confirmAction('Clear this conversation?', 'This permanently removes saved messages for this room from this device. Other participants keep their own copies.', async () => { await localData.clearHistory(userId(), state.room.id); state.messages = []; toast('Local conversation cleared.'); }, { label: 'Clear', danger: true, icon: 'trash' });
-  if (action === 'clear-all') return confirmAction('Clear your local chats?', 'Your saved messages on this device will be permanently removed. Your account, room memberships, and saved invitations stay available.', async () => { await Promise.all(Object.keys(state.localRooms).map(id => localData.clearHistory(userId(), id))); state.messages = []; toast('Your local chat history was cleared.'); }, { label: 'Clear chats', danger: true, icon: 'trash' });
+  if (action === 'clear-room') {
+    const account = userId(), generation = accountGeneration, id = state.room?.id;
+    if (!account || !id) return;
+    return confirmAction('Clear this conversation?', 'This removes saved messages and the unsent draft for this room from this device. Other participants keep their own copies.', async () => {
+      if (account !== userId() || generation !== accountGeneration) return;
+      const [, cleared] = await Promise.all([localData.clearHistory(account, id), draftStore.clear(account, id), markRoomRead(id, account, generation)]);
+      if (account !== userId() || generation !== accountGeneration) return;
+      if (state.room?.id === id) { state.messages = []; if (cleared) state.draft = ''; }
+      toast('Local conversation cleared.');
+    }, { label: 'Clear', danger: true, icon: 'trash' });
+  }
+  if (action === 'clear-all') {
+    const account = userId(), generation = accountGeneration, visibleRoom = state.room?.id;
+    const ids = [...new Set([...Object.keys(state.localRooms), ...state.rooms.map(room => room.id)])];
+    if (!account) return;
+    return confirmAction('Clear your local chats?', 'Your saved messages and unsent drafts on this device will be removed. Your account, room memberships, and invitations stay available.', async () => {
+      if (account !== userId() || generation !== accountGeneration) return;
+      const cleared = await Promise.all(ids.map(async id => {
+        const [, draftCleared] = await Promise.all([localData.clearHistory(account, id), draftStore.clear(account, id)]);
+        return [id, draftCleared];
+      }));
+      if (account !== userId() || generation !== accountGeneration) return;
+      await persistRoomTools(old => ({ ...old, unread: {} }), account, generation);
+      if (account !== userId() || generation !== accountGeneration) return;
+      if (state.room?.id === visibleRoom) {
+        state.messages = [];
+        if (!visibleRoom || cleared.some(([id, draftCleared]) => id === visibleRoom && draftCleared)) state.draft = '';
+      }
+      toast('Your local chat history was cleared.');
+    }, { label: 'Clear chats', danger: true, icon: 'trash' });
+  }
   if (action === 'accept-research') { const form=state.modal.form; state.modal=null; return submitRoom(form,true); }
   if (action === 'request-shared-clear') return confirmAction('Ask everyone to clear chat?', 'Every current member must approve within 24 hours. Any decline stops it. Updated apps clear their saved history when they reconnect; exports and older apps cannot be erased.',async()=>{ await v16('request-clear',state.room.id); await syncRoomState(state.room.id); toast('Shared clear request sent.'); },{label:'Ask everyone',icon:'trash'});
   if (action === 'clear-vote') { await syncRoomState(state.room.id); openModal('clear-vote'); return; }
   if (action === 'vote-yes' || action === 'vote-no') return run(action,async()=>{ await v16('vote-clear',state.room.id,{request_id:state.clearRequest.id,approve:action==='vote-yes'}); await syncRoomState(state.room.id); state.modal=null; toast('Your vote was recorded.'); });
   if (action === 'signout') return confirmAction('Sign out of SecretChat?', 'Your history stays encrypted on this device. Sign in with this same account to access it again.', async () => { await leaveView(false); await clearNotificationSession(); const { error } = await supabase.auth.signOut({ scope: 'local' }); if (error) throw error; }, { label: 'Sign out', icon: 'logout' });
-  if (action === 'confirm') { const task = state.modal.task; return run(action, async () => { await task(); state.modal = null; }); }
+  if (action === 'confirm') {
+    const modal = state.modal, account = userId(), generation = accountGeneration;
+    return run(action, async () => { await modal.task(); if (generation === accountGeneration && account === userId() && state.modal === modal) state.modal = null; });
+  }
   if (state.profile?.is_admin !== true) return;
   if (action === 'research-vault') return run(action,async()=>{ if (researchKey) { researchKey=null; toast('Research vault locked.'); return; } const vault=await v16('vault-get'); openModal('research-vault',{exists:!!vault,vault}); });
   if (action === 'admin-read') return run(action,async()=>{
@@ -615,9 +813,21 @@ app.addEventListener('submit', event => {
     state.modal = null; await loadAdmin(); toast('Android update published. Registered devices will be alerted.');
   });
 });
-app.addEventListener('input', event => { if (event.target.id === 'message-input') { state.draft = event.target.value; event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 130)}px`; } });
+function ownsComposer(field) {
+  return field === document.querySelector('#message-input') && state.screen === 'chat' && userId() &&
+    field.dataset.account === userId() && field.dataset.roomId === state.room?.id && field.dataset.generation === String(accountGeneration);
+}
+app.addEventListener('input', event => {
+  if (event.target.id === 'message-input') {
+    if (!ownsComposer(event.target)) return;
+    state.draft = draftStore.set(userId(), state.room.id, event.target.value);
+    event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 130)}px`;
+  }
+  if (event.target.id === 'room-search') { state.roomQuery = event.target.value; renderRoomList(); }
+  if (event.target.id === 'chat-search-input') { state.chatQuery = event.target.value; const results = document.querySelector('#chat-search-results'); if (results) results.innerHTML = searchResultsMarkup(); }
+});
 app.addEventListener('keydown', event => {
-  if (event.target.id === 'message-input' && event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void sendMessage(); }
+  if (event.target.id === 'message-input' && ownsComposer(event.target) && event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void sendMessage(); }
   if (event.key === 'Escape' && state.modal && !state.busy) { state.modal = null; render(); }
   if (event.key === 'Tab' && state.modal) {
     const focusable = [...document.querySelectorAll('.modal button:not([disabled]), .modal input, .modal textarea, .modal select')];
@@ -647,7 +857,7 @@ window.addEventListener('offline', () => { state.offline = true; render(); void 
 function setActive(active) {
   if (active === state.appActive) return;
   state.appActive = active;
-  if (!active) { researchKey=null; }
+  if (!active) { researchKey=null; void draftStore.flush().catch(() => {}); }
   document.body.classList.toggle('app-inactive', !active);
   if (active) { if (userId()) void refreshConnection().catch(error => toast(friendly(error))); }
   else { void syncSubscriptions().catch(()=>{}); researchKey=null; if (state.modal?.type==='research-chat') { state.modal=null; render(); } if (state.room && !state.room.closed_at) void rpc('mobile_leave_room', { p_room_id: state.room.id }).catch(() => {}); }
@@ -655,6 +865,7 @@ function setActive(active) {
 if (!native) document.addEventListener('visibilitychange', () => setActive(!document.hidden));
 window.visualViewport?.addEventListener('resize', () => { document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport.height}px`); });
 async function bootstrap() {
+  applyAppearance();
   render();
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   setTimeout(() => { state.launch = false; document.querySelector('.launch')?.remove(); }, reduceMotion ? 100 : 1600);

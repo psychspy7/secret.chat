@@ -37,3 +37,5 @@ mobile/android/app/google-services.json
 .firebase/
 supabase/.temp/
 
+
+mobile/android/.kotlin/

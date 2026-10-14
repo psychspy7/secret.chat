@@ -79,7 +79,7 @@ export async function enableNotifications() {
     const permission = await PushNotifications.requestPermissions();
     if (permission.receive === 'granted') await PushNotifications.register();
   }
-  notificationStatus.message = native && !notificationStatus.pushConfigured ? 'Room alerts are on while the app is open. Background push is not configured in this build.' : native && serverPushConfigured ? 'Room alerts are on. Android controls sound and delivery.' : native ? 'Room alerts are on. Registering background notifications…' : 'Preview sound is on. Android notifications are available in the APK.';
+  notificationStatus.message = native && !notificationStatus.pushConfigured ? 'Room alerts are on while the app is open. Background push is not configured in this build.' : native && serverPushConfigured ? 'Room alerts are on. Android controls sound and delivery.' : native ? 'Room alerts are on. Registering background notifications…' : 'Room sound is on while this website is open. Android background notifications are available in the APK.';
 }
 export async function disableNotifications() {
   notificationStatus.enabled = false;

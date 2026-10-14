@@ -1,244 +1,99 @@
-# SecretChat owner handover
+# SecretChat V2 owner handover
 
-Prepared 11 October 2026. Current Android release: **1.6.2 / build 9**.
+Prepared 14 October 2026. Release identity: **2.0.0 / Android build 10**. Read the final `mobile/V2.0-RELEASE-CHECKS.md` for actual verification and remaining device checks.
 
-Use this guide when maintaining the project yourself, moving computers, or handing it to another developer or AI coding tool. Start from the current repository, preserve the existing accounts and signing identity, and release changes in the order below.
+## Keep these deliverables
 
-## 1. Keep these files
+- `SecretChat-2.0.0.apk`: Android installation/update. Install over the old app; do not uninstall or clear app data.
+- `SecretChat-2.0.0.aab`: signed Google Play bundle, not a directly installable file.
+- `SecretChat-v2.0.0-Source.zip`: flat clean source, assets, backend migrations/functions, tests and guides.
+- `SOURCE-LATEST.zip`: canonical source snapshot with Source/, CONTINUE.md/.py, project metadata and per-file checksums.
+- `SecretChat-2.0.0-Full-Package.zip`: release files, both source snapshots, this guide, the AI prompt, release evidence and checksums.
 
-| File | Purpose |
+Source ZIPs exclude private credentials, signing material, dependencies and generated caches. They are not backups of live accounts, chats, dashboard configuration or Git history. Keep the existing Git repository and encrypted private backups separately.
+
+## Existing services and identities
+
+| Service | Keep this identity |
 | --- | --- |
-| `release/SecretChat-1.6.2.apk` | Signed Android installation and update file. |
-| `release/SecretChat-1.6.2.aab` | Signed bundle for Google Play Console, subject to Play setup and review. It is not a directly installable APK. |
-| `release/SecretChat-v1.6.2-Source.zip` | Clean website, Android, backend, tests, artwork and documentation snapshot. Configuration and private credentials are excluded. |
-| `mobile/docs/OWNER-HANDOVER.md` | This maintenance guide. |
-| `mobile/docs/AI-HANDOVER-PROMPT.md` | Instructions you can give another AI coding tool. |
-| `UPDATES.md` | Short release procedure. |
-| `mobile/V1.6.2-RELEASE-CHECKS.md` | Evidence and remaining device checks for this release. |
-| `release/SecretChat-1.6.2-SHA256.txt` | Checksums for the final APK, AAB and source ZIP. Generated separately, not inside the ZIP. |
-
-The source ZIP is a code snapshot, not a backup of your live database, user chats, signing identity, or dashboard settings. For ongoing development, clone the GitHub repository so you retain its history and can push changes.
-
-## 2. Accounts and identifiers
-
-| Service | Existing project or location |
-| --- | --- |
-| Website | https://secret-chat-sable.vercel.app/ |
 | GitHub | https://github.com/psychspy7/secret.chat |
-| Vercel | Project `secret-chat`, production branch `main` |
-| Supabase | Project `zpeadphldseifbfxpkaa` |
-| Firebase notifications | Project `kitty-sidechat-20260930` |
-| Android application ID | `com.kittycorp.sidechat` |
-| Android administrator | Confirmed account `viratanand1221@gmail.com`, then Control |
-| Website administrator | `/SECRET`, using the existing permanent host credentials |
+| Website | https://secret-chat-sable.vercel.app/ |
+| Vercel | secret-chat; production branch main |
+| Supabase | zpeadphldseifbfxpkaa |
+| Firebase push | kitty-sidechat-20260930 |
+| Android package | com.kittycorp.sidechat |
+| Verified app/modern website administrator | viratanand1221@gmail.com; Control tab |
+| Permanent legacy host panel | /SECRET, /secret or /host; existing host ID/password |
+| KITTY AI integration | Fixed installed package com.kitty.ai; fallback https://kittycorp.vercel.app/launches/kitty-ai |
+| Company/review | https://kittycorp.vercel.app/ and /contact?subject=Review&product=SecretChat |
 
-The visible brand is SecretChat. Existing technical identifiers retain their original names. Keep the Android application ID and signing identity for compatible updates. Google login is provided through Supabase; Firebase is used for Android push notifications.
+The visible brand is SecretChat V2. Technical identifiers intentionally retain old SideChat names for compatibility. Never recreate the backend, replace the Android package, or generate a new signing identity for an ordinary update.
 
-The website and Android app currently have separate room systems. Their codes, memberships and administrator sign-ins are not interchangeable. Editing only `src/` changes the website; editing only `mobile/src/` changes the Android interface after a new APK is built. A deliberate change in both directories is required when both should gain a feature.
+## Architecture
 
-## 3. Make private backups before moving computers
+`mobile/src/` is now the shared account-based client for Android and the production website root. Google and confirmed email accounts share room memberships. Messages, invitations, drafts, themes, pins and unread counts remain separately encrypted on each device/browser; signing in elsewhere does not transfer history. Android uses Keystore-backed encrypted private storage; the browser uses IndexedDB and a non-extractable Web Crypto key. Preserve database/storage/key names and account-scoped record formats.
 
-Back up the following separately in encrypted storage that you control. These are deliberately absent from GitHub and the source ZIP:
+Root `src/` retains the older anonymous browser service. Old /r invitations, /create and permanent /SECRET administration are routed to `legacy.html`; its home is /legacy. It keeps its original separate encryption/admin-access/retention model. The modern root never silently imports or converts legacy rooms.
 
-- **`.android-signing/sidechat-release.p12` and `.android-signing/keystore.properties`**: the original key, passwords and alias. Preserve both together. The release build refuses to proceed without the original signing files. Restore these files before building.
-- Root `.env.local`, and any local production environment file. They contain the client connection settings; recreate from `.env.example` if necessary.
-- `mobile/android/app/google-services.json`: the Firebase Android client configuration. It can be downloaded again from the existing Firebase project for the existing application ID. Its project identifiers are not private server credentials, but this project excludes the file from the clean archive.
-- `.mobile-secrets/`, if you retain the existing server setup credentials locally. The Firebase sender private key must remain server-only. The deployed copy is in the Supabase Edge Function secret named `FCM_SERVICE_ACCOUNT_JSON`.
-- The permanent website host credentials and the Android research vault password, stored in a password manager. The current research vault has no password recovery or rotation feature. Ordinary app login cannot recover it.
-- Access to the GitHub, Vercel, Supabase, Google Cloud/Firebase and any email sender accounts. Use account recovery and MFA settings that you control.
+`mobile/scripts/build-website.mjs` builds the legacy entry, preserves it as legacy.html, then overlays the modern entry without clearing legacy assets/downloads. Vercel and Netlify route old URLs to that preserved entry. Native builds use only mobile/dist. Do not combine the two invitation formats or accidentally route old encrypted invitations into the new app.
 
-Never put private signing files, passwords, service-role keys, OAuth client secrets or service-account keys into a public repository, browser build, APK, source ZIP, or an AI chat attachment. An AI can edit clean source without those credentials; do private signing and dashboard configuration locally or through authorized secure tools.
+The modern private relay is end-to-end encrypted and live-only. Up to 500 received messages per room are saved locally. Messages sent while a device is offline/backgrounded are not later added to its private history. Unread counts describe newly received local messages, not server read receipts. At most four recent rooms are actively watched; channels stop in the background/offline. Generic FCM alerts do not include message text.
 
-The original public signing certificate SHA-256 is:
+Research rooms are optional, labeled and require participant consent. Only those rooms have an encrypted administrator archive, unlocked with the separate password-encrypted research vault. Preserve manual retention: messages stay until an approved clear; at 1,000 per room or 4,096 total, reject new research messages instead of deleting older ones. Private rooms have no administrator archive/key. Shared clear needs unanimous current-member approval within 24 hours; a decline/new member stops it. Administrators may clear directly. Epoch checks stop replay/old sending; reconnecting updated clients clear history, but existing exports and older apps cannot be remotely erased.
 
-```text
-8e4f4cdfcbd905336944969b6d23e8c9e15826bce322b05e03a4f5ef6b8820b0
-```
+KITTY AI is an explicit shortcut, not a chat-data integration. It receives no account, room code, key or message. Reviews carry public product context only. Invitation sharing/message copying is explicit. Do not promise impossible screenshot prevention or hide research/admin metadata access. Android capture is protected for normal users; only a server-verified unlocked admin session may capture. Fingerprint/PIN, recent-task protection and native update validation remain in place.
 
-This is a public certificate fingerprint, not the private key. Compare future APK certificate output against it. See [Android signing guidance](https://developer.android.com/studio/publish/app-signing).
+## Private backups — never put these in the ZIP or an AI chat
 
-## 4. Work from another computer or AI coding tool
+Preserve .android-signing/sidechat-release.p12 and keystore.properties together in encrypted storage, including their original alias/passwords. Native release builds deliberately fail when they are missing. Moving the checkout may require updating only the private storeFile path to the SAME key.
 
-Use Windows, PowerShell 7 or newer, Git, and Node.js 22 or newer. The build scripts prepare JDK 21 and Android SDK tooling in `.android-tools`. Use a normal local folder outside OneDrive or other synced storage; this project previously encountered Gradle file-lock/cache problems in OneDrive.
+Also retain root .env.local/.env.production, mobile/android/app/google-services.json, excluded .mobile-secrets, permanent host credentials, research-vault password and access/recovery to existing service accounts. Firebase client configuration can be downloaded again for the same package. Server FCM credentials remain in Supabase server secrets. No service-role key, OAuth secret, signing password or private key belongs in VITE_ variables.
 
-For example, in PowerShell:
+Original public APK certificate SHA-256: `8e4f4cdfcbd905336944969b6d23e8c9e15826bce322b05e03a4f5ef6b8820b0`. This fingerprint is safe to share; it is not the private key.
 
-```powershell
-git clone https://github.com/psychspy7/secret.chat.git "$env:USERPROFILE\Downloads\Project (Kitty-Corp)\PRIVATE CHAT ROOM (KITTY CORP)\SecretChat-Source"
-Set-Location "$env:USERPROFILE\Downloads\Project (Kitty-Corp)\PRIVATE CHAT ROOM (KITTY CORP)\SecretChat-Source"
-git switch -c codex/my-update
-npm.cmd ci
-npm.cmd --prefix mobile ci
-```
+## Work yourself or with another AI
 
-Choose a new branch name for each change. If you already have a checkout, save any local work and pull the latest `main` before starting. Keep the two package lockfiles; use `npm ci` to install the recorded versions. Upgrade dependencies deliberately with the relevant tests rather than replacing the project with a new scaffold.
+Use the canonical workspace C:/Users/HP/Downloads/Project (Kitty-Corp)/PRIVATE CHAT ROOM (KITTY CORP)/SecretChat-Source. Read parent AGENTS.md, START-HERE.md and project instructions. Keep separate repositories/history and never move this build into OneDrive or old synced project mirrors. On another computer, clone the existing repository into a normal local folder; an extracted source snapshot may be overlaid on that clone while preserving .git. Give the AI `AI-HANDOVER-PROMPT.md` and your exact new request.
 
-Copy `.env.example` to root `.env.local` and restore:
-
-```text
-VITE_SUPABASE_URL=https://zpeadphldseifbfxpkaa.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_EXISTING_PUBLISHABLE_KEY
-```
-
-Get the publishable key from the existing Supabase project's API settings. Never substitute a service-role or secret key. Both Vite apps read this root file; the native Gradle configuration also uses it. Restore the original signing folder and Firebase client configuration before building Android. If the checkout path changed, update only `storeFile` in private `keystore.properties` to the absolute path of the same restored `.p12`; retain the passwords and alias.
-
-Open the cloned folder in the AI coding tool and give it `AI-HANDOVER-PROMPT.md` plus your exact change request. A tool without a terminal or native Android build environment can prepare source changes, but cannot prove a signed APK works. Build and test locally before publishing. Previewing the interface in a browser does not test native fingerprint, screenshot protection, notifications or installation.
-
-## 5. Where to make changes
-
-| Change | Main source locations |
-| --- | --- |
-| Website pages and navigation | `src/main.js` |
-| Website premium presentation | `src/refinement.css` and the other existing styles in `src/` |
-| Android screens and actions | `mobile/src/main.js` |
-| Android premium presentation | `mobile/src/polish.css`, `mobile/src/style.css` |
-| Client backend calls | `mobile/src/backend.js` |
-| Local history and encryption | `mobile/src/storage.js`, `mobile/src/crypto.js` |
-| Research vault and CSV export | `mobile/src/research.js` |
-| Activity alerts and sound behavior | `mobile/src/notifications.js`, `mobile/src/alert-policy.js`, `supabase/functions/_shared/push.ts` |
-| Room rules, roles, limits and retention | New reviewed files in `supabase/migrations/` |
-| Server message delivery, devices, presence, releases | `supabase/functions/mobile-send/`, `mobile-device/`, `mobile-presence/`, `mobile-release/`, plus `_shared/` |
-| Android fingerprint, secure storage, screenshots and updater | `mobile/android/app/src/main/java/com/kittycorp/sidechat/` |
-| Android package, version and release signing setup | `mobile/android/app/build.gradle` |
-| Logo source and generated app assets | `mobile/brand/`, `mobile/public/secretchat-icon.jpg`, native `res/mipmap-*` |
-| Public website download link | `src/main.js`; APK binaries go in `public/downloads/` |
-| Privacy explanation | `public/mobile-privacy.html`, `mobile/info-site/privacy.html`, and relevant in-app copy |
-
-For another logo or sound, `mobile/scripts/import-brand-assets.py` resizes artwork and imports the MP3. It requires Python with Pillow. Its `--icon`, `--sound` and optional `--monogram` arguments are documented in the script. Copy equivalent public artwork to the website when needed. Android notification channel sound settings are persistent; changing just an MP3 does not necessarily change a channel already configured on an installed phone. Review native and server channel IDs together when introducing a new channel.
-
-## 6. Preview and check an edit
-
-Run from the repository root:
+Use Windows PowerShell 7+, Git, Node.js 22+, and the supplied native setup (JDK21/AndroidSDK36). From the repo:
 
 ```powershell
-npm.cmd run dev
+npm.cmd run setup:workspace
+# Restore .env.local from .env.example with the existing URL and publishable key only.
+npm.cmd --prefix mobile run dev   # modern UI, 127.0.0.1:5174
+npm.cmd run dev                   # legacy browser UI
+npm.cmd run check:all
+npm.cmd run build                 # both website entries into root dist
+npm.cmd run preview               # combined production routes, 127.0.0.1:5176
+npm.cmd --prefix mobile run build # native web assets only
 ```
 
-This previews the website at the URL printed by Vite. In another terminal:
+Both normal development previews use your configured backend. Use staging/test accounts for writes; a Vercel preview does not isolate Supabase. The excluded .release-tools UI fixture is local synthetic testing only and is never deployed or packaged. Browser previews do not verify native phone behavior.
+
+Important source map: mobile/src/main.js (shared UI/actions), v2.css (V2 presentation), organizer.js (bounded pins/search/preferences/debounced drafts), storage.js/crypto.js (encryption/local records), runtime.js (lifecycle/render queues), notifications.js/alert-policy.js (alerts), research.js (vault/export), backend.js (PKCE/account backend), Android Java package (Keystore/biometric/capture/updater/native sharing/theme/haptics/AI shortcut), supabase/migrations and functions (server rules), root src/main.js/v2.css (legacy service), build/preview scripts and hosting config (dual entries).
+
+## Future release order
+
+1. Inspect main and the live Supabase mobile_releases maximum version_code. Choose a strictly larger build; after this release the next candidate is 11 only if 10 remains latest. Example display/package version 2.0.1. Align mobile/package.json+lockfile, build.gradle versionName/versionCode, main.js fallback/beta label, docs and versioned download links. Keep the package ID and original key.
+2. Run relevant checks, dependency audit and responsive QA. Backend changes need reviewed new migrations/Edge deployment separately; Vercel does not deploy them. Never reset/reseed live data or rewrite applied migration history.
+3. Restore original private signing/Firebase settings. On a new machine run native-setup.ps1. Then:
 
 ```powershell
-npm.cmd --prefix mobile run dev
-```
-
-This previews the Android web interface at `http://127.0.0.1:5174`. Both previews connect to the configured backend; use test accounts and clearly named test rooms, or a separate staging backend, for changes that write data. A Vercel preview does not automatically give you a separate Supabase database.
-
-Before a release:
-
-```powershell
-npm.cmd run check
-npm.cmd run build
-npm.cmd --prefix mobile run check
-npm.cmd --prefix mobile run build
-node --test tests/mobile-backend-edge.test.mjs
-```
-
-The GitHub workflow runs website/mobile checks and web builds. It does not automatically produce your privately signed APK/AAB, deploy Supabase migrations, or deploy Edge Functions. Backend SQL suites require database-owner access and are documented in `mobile/docs/BACKEND.md`; review them before running, preferably in staging. Native unit tests run in the release build script.
-
-## 7. Update the website
-
-1. Edit and test the root website source. If the change depends on new server behavior, deploy the compatible backend change first.
-2. Commit only the intended files and push your branch. Review the diff and preview.
-3. Merge the tested change to `main`. The connected Vercel project automatically deploys that branch. Check that the production deployment is Ready and open the website on desktop and phone widths.
-4. Vercel builds with `npm run build`, output `dist`. Restore `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in its environment settings when moving/recreating the hosting project. They are public client configuration, not server secrets. Redeploy after an environment change.
-
-You can use GitHub Desktop to select changes, commit, push and open/merge a pull request. Keep private folders out of commits. See [Vercel Git deployment](https://vercel.com/docs/git).
-
-## 8. Build the next Android release
-
-For the next release, an example is **1.6.3 / build 10**. Inspect the current published build first and choose a number greater than it; 10 is appropriate only while 9 remains the latest.
-
-1. In `mobile/android/app/build.gradle`, set `versionName "1.6.3"` and `versionCode 10`. Keep `applicationId "com.kittycorp.sidechat"`.
-2. Align the version in `mobile/package.json`, `mobile/package-lock.json`, the fallback version/build and beta label in `mobile/src/main.js`, and release documentation. Do not change package IDs to match the new display name.
-3. Confirm the original `.android-signing` files, root `.env.local` and Firebase `google-services.json` are present. If the original signing material is missing, restore it before continuing. A newly generated signing key cannot update the existing APK installation.
-4. From the repository root:
-
-```powershell
-./mobile/scripts/native-setup.ps1
 ./mobile/scripts/native-build.ps1
-./mobile/scripts/verify-apk.ps1 -Apk release/SecretChat-1.6.3.apk
+./mobile/scripts/verify-apk.ps1 -Apk release/SecretChat-2.0.1.apk
 ```
 
-The setup step is needed on a new machine. The build compiles the mobile client, prepares audio, syncs Capacitor, builds APK/AAB, runs native unit tests, verifies signatures and copies the files into `release/`. The verifier checks the APK's label, application ID, release mode and private-credential patterns. Compare the certificate fingerprint to the original fingerprint above; the script's signature validity check alone does not establish that it is the original key.
+The build emits matching APK/AAB and runs native unit tests. Compare the original certificate and verify package, increasing version, non-debuggable build, known-secret scan and bundled web assets. Test a real upgrade over the installed APK: login callback, email on requesting device, biometric/PIN, screenshot roles, composer/keyboard, reconnect, notifications/beep, room expiry/extensions, research consent/export/shared clear. Report untested behavior honestly.
+4. Put the verified APK at a NEW immutable public/downloads filename; explicitly force-add only that intended binary. Preserve old release links. Commit/review/push/merge only SecretChat work. Verify GitHub checks and Vercel Ready, modern root and legacy routes, and the actual public APK byte hash.
+5. Only AFTER that public-download check, publish version/build/direct HTTPS URL/SHA256/notes through Control → Releases → Publish (or authorized owner setup). That advances the update manifest and queues generic update alerts. Never announce a nonexistent APK or fabricate JWT roles. Users still confirm Android installation; pushing source alone does not update installed apps. FCM acceptance is not proof a phone beeped.
+6. Refresh only the SecretChat archive via Source File Zip/Update-Source-Zips.ps1 -Project secretchat after successful checks. Build the flat source ZIP with mobile/scripts/package-source.ps1. Verify actual ZIP contents, CRC and known-secret exclusions; package APK/AAB, guides and checksums. Preserve private files and Git history locally.
 
-5. Install the APK **over the existing app** on a real phone. Do not uninstall or clear app data: chats and invitations are stored locally and Google login does not restore them. Check login return, email link on the requesting device, fingerprint/PIN, keyboard/composer, reconnect, joins/messages, sound/background alerts, admin screenshot exception, ordinary screenshot protection, timed/permanent rooms, extension requests, research consent/view/export and shared clear behavior relevant to your changes.
-6. Keep the APK and AAB from this exact build. An AAB is uploaded to Play Console; it is not opened on the phone like an APK.
+For Google Play, upload the AAB through Play Console and configure Play App Signing using the existing identity when compatible sideload updates are required. AABs cannot be installed directly. Follow Play's own update flow for Play-distributed builds.
 
-Increasing `versionCode` distinguishes each release to Android and to this app's updater. See [Android versioning](https://developer.android.com/studio/publish/versioning).
+## Remaining setup and honest limits
 
-## 9. Publish the APK and announce it inside the app
+Public email one-time links need a custom SMTP sender in the EXISTING Supabase project and a real recipient delivery test. The default test sender is restricted to project-team addresses. Enter credentials directly in Supabase, not source/chat; keep Google available. Do not claim public email delivery from a rendered button.
 
-1. Copy the verified APK to a new immutable path, for example:
+History and invitation recovery are intentionally local; uninstall, app/browser data clearing, device loss or key loss may erase them. A website cannot block OS captures. Native notification delivery/sound depends on Android permission, channel, battery and network settings. Keep the research-vault password safe: this version has no recovery/rotation flow.
 
-```powershell
-Copy-Item -LiteralPath release/SecretChat-1.6.3.apk -Destination public/downloads/SecretChat-1.6.3-build10.apk
-Get-FileHash -Algorithm SHA256 -LiteralPath public/downloads/SecretChat-1.6.3-build10.apk
-git add -f public/downloads/SecretChat-1.6.3-build10.apk
-```
-
-Force-add only that intended public APK because APKs are normally ignored. Stage the intended source changes separately. Preserve earlier download files and URLs; replacing a published binary breaks its recorded hash. Update the website's download link to the new filename, commit and deploy through `main`.
-
-2. Wait for Vercel Ready. Download the new public URL and confirm it returns an APK directly over HTTPS without redirects, login pages or HTML fallback. Verify the downloaded file's SHA-256 matches the local APK. An example URL is `https://secret-chat-sable.vercel.app/downloads/SecretChat-1.6.3-build10.apk`.
-3. Sign in as `viratanand1221@gmail.com`, open **Control → Android releases → Publish**, and provide the version, increasing build number, exact direct URL, exact SHA-256 and release notes. Do this only after the file is reachable.
-4. The release service stores the manifest and queues generic update notifications for registered devices. The current app checks on open/resume, while active, and through **Account → Check for updates**. Users choose Install and confirm Android's permission/installation prompts. Notification beeps depend on notification permissions, channel sound, battery settings and connectivity; FCM acceptance is not proof that every phone sounded.
-
-Publishing website code alone does not replace the APK installed on users' phones. Publishing a manifest before its APK is deployed causes a failed download. The installer verifies the file hash, package, higher version code and matching signing certificate; it does not silently install updates.
-
-For Play distribution, configure Play App Signing and its certificate compatibility deliberately before the first release, using Android's official signing guidance. Use Play's update flow for Play installations. The AAB by itself does not create a store listing or satisfy Play's account, privacy and release requirements.
-
-## 10. Backend or authentication changes
-
-Keep the existing Supabase and Firebase projects when maintaining the current app. Creating a different project does not move users, memberships, OAuth configuration, research keys, device registrations or local data.
-
-For a database change, make a backup using the project's supported backup/export options, test in staging, create a new migration with the current Supabase tooling, review its authorization and compatibility with older apps, and apply only pending migrations to the existing project. All baseline and v1.6 migrations, including `20261003051645_mobile_v16_manual_research_retention.sql`, were already applied during this release. Do not replay the initial schema or reset production. On a genuinely new empty project, migration order and separate Auth/server configuration matter.
-
-If server code changes, deploy the affected Edge Functions and shared dependencies separately from Vercel. The four current functions are `mobile-send`, `mobile-device`, `mobile-presence`, and `mobile-release`. The existing functions have gateway JWT verification disabled because they perform custom Supabase Auth checks and guarded database session/role checks. Preserve that complete authentication architecture when deploying; disabling gateway verification without those checks would expose an endpoint. A new checkout has no tracked `supabase/config.toml`, so do not assume deployment defaults preserve the cloud settings. Review current CLI `--help` and function configuration, or deploy through an authenticated Supabase tool with the existing settings. See [function deployment](https://supabase.com/docs/guides/functions/deploy).
-
-Retain `FCM_SERVICE_ACCOUNT_JSON` only in Supabase Edge Function secrets. Google OAuth client secrets belong in Supabase's provider settings, and SMTP credentials in its email settings. Never embed them in `VITE_` variables. Keep RLS and server-enforced roles; a frontend flag or user-editable profile field must not grant administrator access. New exposed tables need deliberate grants and RLS; check current Supabase docs/changelog before changing the schema.
-
-Google's current Android callback is `com.kittycorp.sidechat://auth/callback`; the OAuth web client uses `https://zpeadphldseifbfxpkaa.supabase.co/auth/v1/callback`. Keep the exact app redirect in the Supabase allowlist and review origins/callbacks before changing domains. Use the existing Firebase Android registration when restoring `google-services.json`. See [Firebase Android setup](https://firebase.google.com/docs/android/setup) and [Supabase server secrets](https://supabase.com/docs/guides/functions/secrets).
-
-**Public email sign-in still needs custom SMTP.** Supabase's default sender delivers only to project team addresses. Configure a verified sender through Authentication → Emails → SMTP Settings, then test a non-team recipient on the requesting phone. Google sign-in is available while this is pending. See [Supabase SMTP setup](https://supabase.com/docs/guides/auth/auth-smtp).
-
-## 11. Daily administration without a code release
-
-Use the Android Control panel to manage notices, participants and room approvals, create permanent admin groups, extend room time, review deletion/extension requests, publish app releases, and access consented research archives. The website `/SECRET` manages website rooms and notices separately. A notice or approved extension uses the backend and does not need a new APK.
-
-For Android research view/export, unlock Research vault with its existing password, then choose a research room's View / export action. Private Android rooms have no administrator archive/key and missed live messages cannot be fetched later. Private rooms cannot be retroactively converted into research archives. Research access requires explicit room opt-in and participant consent; keep these notices accurate in future versions.
-
-Research archives stay until an approved manual clear. At 1,000 messages per room or 4,096 globally, new research messages are rejected rather than silently deleting old ones. Export what you need and approve a manual clear to free capacity. Unanimous member clearing includes current offline members; declines or new members cancel the request. Clearing updates connected clients and reconciles on later sync, but cannot erase exports or copies outside the app. Do not add automatic research cleanup without a new owner decision.
-
-Private history is device-local and bounded; signing in on another phone does not restore its messages or invitation keys. Keep useful exported research CSVs securely outside public source. The website's legacy retained-message model differs and expires/limits its own room data as documented in `README.md`.
-
-## 12. If an update goes wrong
-
-| Symptom | First checks |
-| --- | --- |
-| Website says connect backend | Check Vercel's public environment values and redeploy; check local root `.env.local` for previews. |
-| App reports no update | Manifest build must exceed the installed build; confirm the manifest was published through Control after APK deployment. |
-| Download/hash error | Check immutable URL, HTTP response, redirects, deployment readiness and exact APK SHA-256. Do not disable verification to work around it. |
-| Android refuses replacement | Compare application ID, increasing build code and original signing certificate. Check available storage. Restore the original key instead of uninstalling. |
-| Google callback fails | Check provider client/callback, exact Android redirect allowlist, OAuth audience and that the app on the phone is the new build. |
-| Public email never arrives | Configure custom SMTP, verify sender domain, and test an actual recipient; check spam and Auth logs. |
-| Beep is silent | Enable app alerts and Android notification permission/channel sound; check network and battery restrictions, Firebase client config and server function logs. |
-| Room code fails in another client | Website and Android room codes are separate. Check expiry and the original invitation. |
-| Admin cannot see private Android chat | That room has no admin archive. Use an explicitly consented research room for future research messages. |
-| Research room cannot send | Check room/global archive limits; use the approved manual-clear process. |
-| Gradle cache or lock errors | Move the checkout and restored configuration to ordinary local storage outside OneDrive; rebuild there. |
-
-A website rollback/revert can restore a previous frontend. It does not undo database migrations or an APK already installed. For an Android hotfix, fix the source and publish a new APK with a still higher build number; a lower build is rejected. Design database changes to remain compatible during rollout instead of removing fields immediately.
-
-## 13. Package a clean source handover
-
-After finishing source/docs updates, run from a Git checkout:
-
-```powershell
-./mobile/scripts/package-source.ps1 -Name SecretChat-v1.6.3-Source.zip
-```
-
-Use the actual release version. The packager allowlists source and scans the finished ZIP for private key patterns and known local credentials. It excludes signing/server keys, environment/configuration files, APK/AABs, caches, build folders and local helper files. Give another AI or developer the clean source ZIP or repo plus the handover prompt; share release binaries separately. Private backups stay under your control.
-
-For 1.6.2, the exact automated checks, build/signature results and release delivery are recorded in the release checks. Isolated DOM tests cover scroll/caret and incremental message rendering; these are not real-device performance measurements. Real-phone native login, keyboard, fingerprint, screenshot, notification and update installation checks remain necessary before a wider rollout. See `mobile/V1.6.2-RELEASE-CHECKS.md` for the precise evidence.
-
-Private room delivery is live while the app is active. In 1.6.2 room channels pause in the background to reduce network work; generic activity alerts still use Firebase when enabled. Messages sent while disconnected/backgrounded are not added to the device history. Existing local history and invitation keys remain intact.
-
-Use the canonical Kitty Corp workspace and read its AGENTS.md and START-HERE.md before changes. Do not recreate this project in older OneDrive folders.
+Post-deploy owner validation: immediately and for the first 24 hours, check sign-in/room join/send, private-vs-research boundaries, old invitation/host routes, Vercel/CI errors and release-outbox pending/failed counts without reading private transcripts. Roll back a website commit if unintended login/route/data regression appears; for Android, fix forward with a higher build and the same key. Never delete chats or lower the manifest build to simulate a rollback.

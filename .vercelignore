@@ -11,7 +11,17 @@ tests
 supabase
 *.zip
 README.md
-mobile/
+mobile/android/
+mobile/brand/
+mobile/dist/
+mobile/node_modules/
+mobile/tests/
+mobile/docs/
+mobile/info-site/
+mobile/scripts/native*
+mobile/scripts/import-brand-assets.py
+mobile/scripts/verify-apk.ps1
+mobile/scripts/package-source.ps1
 .mobile-secrets/
 .android-signing/
 .android-tools/
@@ -20,3 +30,4 @@ mobile/
 *.pfx
 *.jks
 *.keystore
+docs/ce-code-review/

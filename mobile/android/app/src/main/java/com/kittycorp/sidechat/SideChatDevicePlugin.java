@@ -1,6 +1,8 @@
 package com.kittycorp.sidechat;
 
 import android.content.Intent;
+import android.view.HapticFeedbackConstants;
+import androidx.core.view.WindowCompat;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -71,6 +73,53 @@ public class SideChatDevicePlugin extends Plugin {
         getActivity().runOnUiThread(() -> { security().verifySession(token); call.resolve(); });
     }
 
+    @PluginMethod
+    public void openKittyAI(PluginCall call) {
+        if (security().isLocked()) { call.reject("Unlock SecretChat first."); return; }
+        getActivity().runOnUiThread(() -> {
+            if (security().isLocked()) { call.reject("Unlock SecretChat first."); return; }
+            Intent intent = getContext().getPackageManager().getLaunchIntentForPackage("com.kitty.ai");
+            JSObject result = new JSObject();
+            try {
+                if (intent != null) getActivity().startActivity(intent);
+                result.put("opened", intent != null);
+                call.resolve(result);
+            } catch (Exception error) { result.put("opened", false); call.resolve(result); }
+        });
+    }
+    @PluginMethod
+    public void shareInvitation(PluginCall call) {
+        if (security().isLocked()) { call.reject("Unlock SecretChat first."); return; }
+        String text = call.getString("text");
+        if (text == null || text.isBlank() || text.length() > 1000) { call.reject("Invalid invitation."); return; }
+        getActivity().runOnUiThread(() -> {
+            try {
+                if (security().isLocked()) { call.reject("Unlock SecretChat first."); return; }
+                Intent intent = new Intent(Intent.ACTION_SEND);
+                intent.setType("text/plain"); intent.putExtra(Intent.EXTRA_TEXT, text);
+                getActivity().startActivity(Intent.createChooser(intent, "Share private invitation"));
+                call.resolve();
+            } catch (Exception error) { call.reject("The share sheet is unavailable. Copy the invitation instead."); }
+        });
+    }
+    @PluginMethod
+    public void hapticTap(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (!security().isLocked()) getActivity().getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
+            call.resolve();
+        });
+    }
+    @PluginMethod
+    public void setAppearance(PluginCall call) {
+        Boolean light = call.getBoolean("light");
+        if (light == null) { call.reject("Choose an appearance."); return; }
+        getActivity().runOnUiThread(() -> {
+            var insets = WindowCompat.getInsetsController(getActivity().getWindow(), getActivity().getWindow().getDecorView());
+            insets.setAppearanceLightStatusBars(light); insets.setAppearanceLightNavigationBars(light);
+            call.resolve();
+        });
+    }
+
     @Override
     protected void handleOnDestroy() {
         storageWorker.shutdown();
@@ -117,7 +166,8 @@ public class SideChatDevicePlugin extends Plugin {
                 getActivity().runOnUiThread(() -> {
                     if (security().isLocked()) { file.delete(); call.reject("Unlock SecretChat before exporting."); return; }
                     try {
-                        Intent intent = new Intent(Intent.ACTION_SEND);
+                        if (security().isLocked()) { call.reject("Unlock SecretChat first."); return; }
+                Intent intent = new Intent(Intent.ACTION_SEND);
                         intent.setType("text/csv"); intent.putExtra(Intent.EXTRA_STREAM, uri);
                         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                         getActivity().startActivity(Intent.createChooser(intent, "Save research chat export"));

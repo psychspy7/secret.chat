@@ -1,4 +1,20 @@
-# SecretChat · Managed by Kitty Corp.
+# SecretChat V2.0 · Managed by Kitty Corp.
+
+SecretChat 2.0.0 / Android build 10 provides the same account-based room interface on Android and at https://secret-chat-sable.vercel.app/. Google and confirmed email accounts share memberships; invitations, encrypted drafts and received-message history remain local to each device or browser. No private transcript is sent to KITTY AI.
+
+V2 adds a calm navy/ivory/mint interface, dark/light/device appearance, reduced-motion and optional native touch feedback, join-first home, pinned rooms, local room/message search, unread counts, private invitation sharing, and sectioned/paged admin controls. KITTY AI opens the installed app where available, otherwise its verified company launch page. Reviews open Kitty Corp with public product context only.
+
+Old browser invitations and the permanent host panel remain available at `/legacy`, `/r/...`, `/create`, `/SECRET`, `/secret` and `/host`. Those anonymous browser rooms retain their separate invitation, retention and administrator-access model. They are never silently converted to modern private rooms.
+
+## Start and build
+
+Use Node 22+, then `npm run setup:workspace`. Restore only public client settings from `.env.example`; server/signing secrets remain private. Modern UI development: `npm --prefix mobile run dev` (5174). Legacy UI development: `npm run dev`. `npm run check:all` checks both clients and Edge endpoints. `npm run build` builds both website entries into root `dist` with legacy routing preserved; `npm run preview` serves that combined build on 127.0.0.1:5176. Vercel/Netlify use the checked-in routing and install settings. Native builds use `mobile/scripts/native-build.ps1` and the original signing material.
+
+Read [owner maintenance and release guide](mobile/docs/OWNER-HANDOVER.md), [future-AI prompt](mobile/docs/AI-HANDOVER-PROMPT.md), [V2 release evidence](mobile/V2.0-RELEASE-CHECKS.md), and [update procedure](UPDATES.md). Public email delivery still needs a configured custom SMTP sender; Google sign-in remains available. An APK/AAB build is not evidence of real-device biometric, notification or installation behavior.
+
+The following documentation describes the retained legacy browser system, not the modern account-based root app.
+
+# Legacy browser rooms — preserved in V2
 
 A responsive private chat website for Vercel or Netlify with Supabase Auth, Database and Realtime. The current deployment is https://secret-chat-sable.vercel.app. There is no custom always-on server. Each browser encrypts and decrypts messages using AES-256-GCM.
 

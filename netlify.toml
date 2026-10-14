@@ -1,6 +1,66 @@
 [build]
-command = "npm run build"
+command = "npm --prefix mobile ci && npm run build"
 publish = "dist"
+
+[[redirects]]
+from = "/legacy"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/legacy/*"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/r"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/r/*"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/create"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/create/*"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/SECRET"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/SECRET/*"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/secret"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/secret/*"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/host"
+to = "/legacy.html"
+status = 200
+
+[[redirects]]
+from = "/host/*"
+to = "/legacy.html"
+status = 200
 
 [[redirects]]
 from = "/*"

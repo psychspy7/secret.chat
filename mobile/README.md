@@ -1,11 +1,13 @@
-# SecretChat Android
+# SecretChat V2 — Android and website
 
-Current release: **1.6.2 / build 9**. See [UI release checks](V1.6.2-RELEASE-CHECKS.md).
+Current release: **2.0.0 / build 10**. See [V2 release checks](V2.0-RELEASE-CHECKS.md).
 
-The Android app is in `mobile/`. The existing browser website remains at the repository root. They share a Supabase project but use separate room and storage systems; website invitation codes do not open mobile rooms.
+The shared account-based client is in `mobile/` and serves Android and the production website root. Memberships use the same Supabase backend; history and invitations remain encrypted separately on each device/browser. Legacy anonymous browser rooms remain in root `src/` at `/legacy` and their old routes. Their original invitations still work in that legacy system.
 
-## What the Android app does
+## What the shared client does
 
+- Dark/light/device appearance, pinned rooms, local room/message search, coalesced encrypted drafts, bounded unread counts, optional native haptics and explicit private invitation sharing.
+- KITTY AI installed-app shortcut with public launch-page fallback, and Kitty Corp review/support links; no private chat transfer.
 - Google and confirmed email sign-in, with server-checked administrator access for `viratanand1221@gmail.com`.
 - Private invitation codes, participant-side AES-GCM message encryption, and device-encrypted local history.
 - Room creation limits, named participants, online presence, optional room join and message alerts, and your supplied notification sound.
